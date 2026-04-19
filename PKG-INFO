@@ -1,0 +1,90 @@
+Metadata-Version: 2.4
+Name: mahanai
+Version: 3.1.0
+Summary: MahanAI: terminal AI agent for NVIDIA NIM (OpenAI-compatible), tools, streaming, /api-key, safety prompts.
+Author: MahanAI
+License-Expression: MIT
+Keywords: ai,cli,nvidia,nim,openai,agent,llm
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: openai>=1.40.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: colorama>=0.4.6
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: rich>=13.0.0
+
+# MahanAI Finale
+
+Terminal AI agent using NVIDIA NIM (`integrate.api.nvidia.com`) with OpenAI-compatible chat, **streaming**, and **tools** (run shell commands, read/write files, list directories).
+
+## Install
+
+```bash
+pip install mahanai-finale
+mahanai
+```
+
+## API key
+
+1. **Environment:** `MAHANAI_API_KEY=...`
+2. **Project `.env`:** `MAHANAI_API_KEY=...`
+3. **Saved config (persists):** inside the app run `/api-key your-key` or `/api-key` for a hidden prompt. Keys are stored under `%APPDATA%\MahanAI\config.json` on Windows or `~/.config/mahanai/config.json` on Linux/macOS.
+
+Use this one for now: mai-api-91023847562910
+
+## Optional
+
+- `MAHANAI_MODEL` — model id from `GET https://integrate.api.nvidia.com/v1/models`
+- `MAHANAI_STREAM=0` — disable streaming (wait for full replies)
+- `MAHANAI_CONFIG_DIR` — override directory for `config.json`
+
+## Commands
+
+- `/exit` or `/quit` — leave
+- `/api-key [key]` — save API key (omit `key` for prompt)
+- `/api-key clear` — remove saved key from disk
+- `/help` — short help
+
+## Develop
+
+```bash
+pip install -e .
+python -m mahanai
+```
+
+## Publish to PyPI
+
+Bump `version` in `pyproject.toml` and `mahanai/__init__.py`, then:
+
+```bash
+pip install build twine
+python -m build
+python -m twine check dist/*
+```
+
+Upload **only** the new release files (example for v1.1.0):
+
+**Windows (PowerShell)** — use an [API token](https://pypi.org/manage/account/token/) with “Entire account” or project scope:
+
+```powershell
+$env:TWINE_USERNAME = "__token__"
+$env:TWINE_PASSWORD = "pypi-YOUR_TOKEN_HERE"
+python -m twine upload dist/mahanai_finale-1.1.0*
+```
+
+**macOS / Linux:**
+
+```bash
+export TWINE_USERNAME=__token__
+export TWINE_PASSWORD=pypi-YOUR_TOKEN_HERE
+python -m twine upload dist/mahanai_finale-1.1.0*
+```
+
+`twine` cannot publish without your token; keep it out of git.
