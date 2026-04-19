@@ -1,3 +1,5 @@
+<img width="600" alt="icon" src="https://github.com/user-attachments/assets/07c20ad0-61ef-47a6-b973-1e86b22be201" />
+
 # MahanAI Super
 
 Terminal AI agent (Super 2.0) with multi-model support, streaming chat, tools, and a built-in Claude CLI mode. Docs: [MahanAI](https://mahancreate.github.io/mahanai).
