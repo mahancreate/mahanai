@@ -1,6 +1,6 @@
 # MahanAI Super
 
-Terminal AI agent (Super 2.0) with multi-model support, streaming chat, tools, and a built-in Claude CLI mode. Docs: `89.167.0.111:1111`.
+Terminal AI agent (Super 2.0) with multi-model support, streaming chat, tools, and a built-in Claude CLI mode. Docs: `https://mahancreate.github.io/mahanai`.
 
 ## Install
 
