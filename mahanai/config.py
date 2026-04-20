@@ -103,3 +103,26 @@ def clear_nvidia_api_key() -> None:
             path.unlink()
         except OSError:
             pass
+
+
+def save_codex_token(token_data: dict[str, Any]) -> None:
+    data = _read_config()
+    data["codex_token"] = token_data
+    _write_config(data)
+
+
+def load_codex_token() -> dict[str, Any] | None:
+    return _read_config().get("codex_token") or None
+
+
+def clear_codex_token() -> None:
+    data = _read_config()
+    data.pop("codex_token", None)
+    if data:
+        _write_config(data)
+    else:
+        path = config_file_path()
+        try:
+            path.unlink()
+        except OSError:
+            pass

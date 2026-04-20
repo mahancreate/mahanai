@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mahanai
-Version: 4.0.2
+Version: 4.0.3
 Summary: MahanAI: terminal AI agent for NVIDIA NIM (OpenAI-compatible), tools, streaming, /api-key, safety prompts.
 Author: MahanAI
 License-Expression: MIT
@@ -14,15 +14,18 @@ Classifier: Programming Language :: Python :: 3.12
 Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
+License-File: LICENSE
+License-File: LICENSE.txt
 Requires-Dist: openai>=1.40.0
 Requires-Dist: python-dotenv>=1.0.0
 Requires-Dist: colorama>=0.4.6
 Requires-Dist: httpx>=0.27.0
 Requires-Dist: rich>=13.0.0
+Dynamic: license-file
 
 # MahanAI Super
 
-Terminal AI agent (Super 2.0) with multi-model support, streaming chat, tools, and a built-in Claude CLI mode. Docs: `89.167.0.111:1111`.
+Terminal AI agent (Super 2.0) with multi-model support, streaming chat, tools, and a built-in Claude CLI mode. Docs: `https://mahancreate.github.io/mahanai`.
 
 ## Install
 
