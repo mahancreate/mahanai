@@ -2,24 +2,34 @@
 
 from __future__ import annotations
 
+import base64
 import getpass
+import hashlib
 import json
 import os
+import secrets
 import subprocess
+import time
+import webbrowser
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 from openai import APIStatusError, OpenAI
 
-from mahanai import colors as C
+from mahanai import __version__, colors as C
 from mahanai.config import (
-    clear_saved_api_key,
+    clear_codex_token,
     clear_nvidia_api_key,
+    clear_saved_api_key,
     config_file_path,
+    load_codex_token,
     load_nvidia_api_key,
     resolve_api_key,
     save_api_key,
+    save_codex_token,
     save_nvidia_api_key,
 )
 from mahanai.system_info import describe_runtime
@@ -31,12 +41,33 @@ DEFAULT_MODEL = "mahanai/mahanai"
 NVIDIA_DIRECT_URL = "https://integrate.api.nvidia.com/v1"
 NVIDIA_DIRECT_MODEL = "meta/llama-3.3-70b-instruct"
 
+CODEX_AUTH_URL      = "https://auth.openai.com/oauth/authorize"
+CODEX_TOKEN_URL     = "https://auth.openai.com/oauth/token"
+CODEX_CLIENT_ID     = "app_EMoamEEZ73f0CkXaXp7hrann"
+CODEX_API_URL       = "https://chatgpt.com/backend-api/wham"
+CODEX_REDIRECT_URI  = "http://localhost:1455/auth/callback"
+CODEX_SAFETY_MARGIN = 30  # seconds before expiry to trigger refresh
+
 AVAILABLE_MODELS: list[dict] = [
-    {"label": "MahanAI Super (legacy)", "name": "mahanai/mahanai",            "note": "legacy",  "group": "NVIDIA NIM", "mode": "server"},
-    {"label": "Llama 3.3 70B",        "name": "meta/llama-3.3-70b-instruct", "note": "direct",  "group": "NVIDIA NIM", "mode": "nvidia_direct"},
-    {"label": "Claude Opus 4",        "name": "claude-opus-4-7",             "note": "opus",    "group": "Claude",     "mode": "claude", "claude_model": "claude-opus-4-7"},
-    {"label": "Claude Sonnet 4.6",    "name": "claude-sonnet-4-6",           "note": "sonnet",  "group": "Claude",     "mode": "claude", "claude_model": "claude-sonnet-4-6"},
-    {"label": "Claude Haiku 4.5",     "name": "claude-haiku-4-5-20251001",   "note": "haiku",   "group": "Claude",     "mode": "claude", "claude_model": "claude-haiku-4-5-20251001"},
+    {"label": "MahanAI Super (legacy)", "name": "mahanai/mahanai",            "note": "legacy",   "group": "NVIDIA NIM",           "mode": "server"},
+    {"label": "Llama 3.3 70B",         "name": "meta/llama-3.3-70b-instruct","note": "direct",   "group": "NVIDIA NIM",           "mode": "nvidia_direct"},
+    {"label": "Claude Opus 4",         "name": "claude-opus-4-7",            "note": "opus",     "group": "Claude",               "mode": "claude", "claude_model": "claude-opus-4-7"},
+    {"label": "Claude Sonnet 4.6",     "name": "claude-sonnet-4-6",          "note": "sonnet",   "group": "Claude",               "mode": "claude", "claude_model": "claude-sonnet-4-6"},
+    {"label": "Claude Haiku 4.5",      "name": "claude-haiku-4-5-20251001",  "note": "haiku",    "group": "Claude",               "mode": "claude", "claude_model": "claude-haiku-4-5-20251001"},
+    {"label": "GPT-5.4",               "name": "gpt-5.4",                    "note": "direct",   "group": "OpenAI Codex (Direct)",  "mode": "codex_direct"},
+    {"label": "GPT-5.2-Codex",         "name": "gpt-5.2-codex",              "note": "direct",   "group": "OpenAI Codex (Direct)",  "mode": "codex_direct"},
+    {"label": "GPT-5.1-Codex-Max",     "name": "gpt-5.1-codex-max",          "note": "direct",   "group": "OpenAI Codex (Direct)",  "mode": "codex_direct"},
+    {"label": "GPT-5.4-Mini",          "name": "gpt-5.4-mini",               "note": "direct",   "group": "OpenAI Codex (Direct)",  "mode": "codex_direct"},
+    {"label": "GPT-5.3-Codex",         "name": "gpt-5.3-codex",              "note": "direct",   "group": "OpenAI Codex (Direct)",  "mode": "codex_direct"},
+    {"label": "GPT-5.2",               "name": "gpt-5.2",                    "note": "direct",   "group": "OpenAI Codex (Direct)",  "mode": "codex_direct"},
+    {"label": "GPT-5.1-Codex-Mini",    "name": "gpt-5.1-codex-mini",         "note": "direct",   "group": "OpenAI Codex (Direct)",  "mode": "codex_direct"},
+    {"label": "GPT-5.4",               "name": "gpt-5.4",                    "note": "indirect", "group": "OpenAI Codex (Indirect)","mode": "codex_indirect"},
+    {"label": "GPT-5.2-Codex",         "name": "gpt-5.2-codex",              "note": "indirect", "group": "OpenAI Codex (Indirect)","mode": "codex_indirect"},
+    {"label": "GPT-5.1-Codex-Max",     "name": "gpt-5.1-codex-max",          "note": "indirect", "group": "OpenAI Codex (Indirect)","mode": "codex_indirect"},
+    {"label": "GPT-5.4-Mini",          "name": "gpt-5.4-mini",               "note": "indirect", "group": "OpenAI Codex (Indirect)","mode": "codex_indirect"},
+    {"label": "GPT-5.3-Codex",         "name": "gpt-5.3-codex",              "note": "indirect", "group": "OpenAI Codex (Indirect)","mode": "codex_indirect"},
+    {"label": "GPT-5.2",               "name": "gpt-5.2",                    "note": "indirect", "group": "OpenAI Codex (Indirect)","mode": "codex_indirect"},
+    {"label": "GPT-5.1-Codex-Mini",    "name": "gpt-5.1-codex-mini",         "note": "indirect", "group": "OpenAI Codex (Indirect)","mode": "codex_indirect"},
 ]
 
 from rich.console import Console
@@ -159,6 +190,289 @@ def _run_claude_cli(prompt: str, model: str | None = None) -> None:
         proc.wait()
     except FileNotFoundError:
         print(f"{C.ERR}[Claude CLI not found] Make sure 'claude' is installed and on your PATH.{C.RST}")
+
+
+def _extract_account_id(id_token: str | None, access_token: str | None) -> str | None:
+    """Extract account ID from JWT payload with three-level fallback (no sig verification needed)."""
+    for token in [id_token, access_token]:
+        if not token:
+            continue
+        try:
+            part = token.split(".")[1]
+            part += "=" * (-len(part) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(part))
+        except Exception:
+            continue
+        if aid := payload.get("chatgpt_account_id"):
+            return aid
+        if aid := payload.get("https://api.openai.com/auth", {}).get("chatgpt_account_id"):
+            return aid
+        orgs = payload.get("organizations", [])
+        if orgs and (aid := orgs[0].get("id")):
+            return aid
+    return None
+
+
+def _build_codex_token_record(tokens: dict, fallback_account_id: str | None = None) -> dict:
+    expires_in = tokens.get("expires_in") or 3600
+    access     = tokens.get("access_token")
+    account_id = _extract_account_id(tokens.get("id_token"), access) or fallback_account_id
+    record: dict = {
+        "type":    "oauth",
+        "access":  access,
+        "refresh": tokens.get("refresh_token"),
+        "expires": int(time.time() * 1000) + expires_in * 1000,
+    }
+    if account_id:
+        record["accountId"] = account_id
+    return record
+
+
+def _codex_pkce_login() -> str | None:
+    """PKCE OAuth flow — opens browser at fixed port 1455, waits for callback, stores tokens."""
+    import threading
+
+    code_verifier  = secrets.token_urlsafe(96)
+    digest         = hashlib.sha256(code_verifier.encode()).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+    state          = secrets.token_urlsafe(16)
+    captured: dict[str, str | None] = {"code": None, "state": None, "error": None}
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            parsed = urlparse(self.path)
+            qs     = parse_qs(parsed.query)
+            if parsed.path == "/auth/callback":
+                received_state = (qs.get("state") or [None])[0]
+                if received_state != self.server._expected_state:  # type: ignore[attr-defined]
+                    captured["error"] = "state mismatch"
+                elif "error" in qs:
+                    captured["error"] = (qs.get("error_description") or qs.get("error") or ["unknown"])[0]
+                else:
+                    captured["code"]  = (qs.get("code") or [None])[0]
+                    captured["state"] = received_state
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                if captured["code"]:
+                    self.wfile.write(b"<html><body><h2>Signed in. You can close this tab.</h2></body></html>")
+                else:
+                    self.wfile.write(f"<html><body><h2>Error: {captured['error']}</h2></body></html>".encode())
+                threading.Thread(target=self.server.shutdown).start()  # type: ignore[attr-defined]
+            else:
+                self.send_response(404)
+                self.end_headers()
+        def log_message(self, *_: object) -> None:
+            pass
+
+    server = HTTPServer(("localhost", 1455), _Handler)
+    server._expected_state = state  # type: ignore[attr-defined]
+
+    params = {
+        "client_id":                    CODEX_CLIENT_ID,
+        "response_type":                "code",
+        "redirect_uri":                 CODEX_REDIRECT_URI,
+        "code_challenge":               code_challenge,
+        "code_challenge_method":        "S256",
+        "state":                        state,
+        "scope":                        "openid profile email offline_access",
+        "id_token_add_organizations":   "true",
+        "codex_cli_simplified_flow":    "true",
+        "originator":                   "mahanai",
+    }
+    auth_url = CODEX_AUTH_URL + "?" + urlencode(params)
+
+    print(f"\n{C.OK}Opening browser for OpenAI sign-in...{C.RST}")
+    print(f"{C.DIM}If browser doesn't open, paste this URL:{C.RST}\n  {auth_url}\n")
+    webbrowser.open(auth_url)
+    server.serve_forever()  # blocks until _Handler calls shutdown()
+
+    if captured.get("error"):
+        print(f"{C.ERR}OAuth error: {captured['error']}{C.RST}\n")
+        return None
+    if not captured.get("code"):
+        print(f"{C.ERR}OAuth cancelled or timed out.{C.RST}\n")
+        return None
+
+    print(f"{C.DIM}Exchanging code for tokens...{C.RST}")
+    with httpx.Client(timeout=30.0) as hc:
+        resp = hc.post(
+            CODEX_TOKEN_URL,
+            data={
+                "grant_type":    "authorization_code",
+                "code":          captured["code"],
+                "redirect_uri":  CODEX_REDIRECT_URI,
+                "code_verifier": code_verifier,
+                "client_id":     CODEX_CLIENT_ID,
+            },
+        )
+        resp.raise_for_status()
+        tokens = resp.json()
+
+    if not tokens.get("access_token"):
+        print(f"{C.ERR}No access token in OAuth response.{C.RST}\n")
+        return None
+
+    record = _build_codex_token_record(tokens)
+    save_codex_token(record)
+    print(f"{C.OK}Signed in to OpenAI. Codex direct mode ready.{C.RST}\n")
+    return record["access"]
+
+
+def _refresh_codex_token(token_data: dict) -> str | None:
+    """Refresh an expired Codex token. Returns new access token or None."""
+    refresh = token_data.get("refresh")
+    if not refresh:
+        return None
+    try:
+        with httpx.Client(timeout=30.0) as hc:
+            resp = hc.post(
+                CODEX_TOKEN_URL,
+                data={
+                    "grant_type":    "refresh_token",
+                    "refresh_token": refresh,
+                    "client_id":     CODEX_CLIENT_ID,
+                },
+            )
+            resp.raise_for_status()
+            tokens = resp.json()
+        if not tokens.get("access_token"):
+            return None
+        record = _build_codex_token_record(tokens, fallback_account_id=token_data.get("accountId"))
+        save_codex_token(record)
+        return record["access"]
+    except Exception:
+        return None
+
+
+def _get_codex_direct_token() -> tuple[str, str | None] | None:
+    """Return (access_token, account_id) for Codex direct mode, refreshing if needed."""
+    data = load_codex_token()
+    if not data:
+        return None
+    expires = data.get("expires", 0)
+    if expires and time.time() * 1000 >= expires - CODEX_SAFETY_MARGIN * 1000:
+        new_access = _refresh_codex_token(data)
+        if not new_access:
+            return None
+        data = load_codex_token() or {}
+    access = data.get("access")
+    return (access, data.get("accountId")) if access else None
+
+
+def _stream_wham(
+    access_token: str,
+    account_id: str | None,
+    messages: list[dict[str, Any]],
+    model: str,
+) -> str:
+    """Stream a response from the WHAM (ChatGPT backend) Responses API."""
+    url = CODEX_API_URL.rstrip("/") + "/responses"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type":  "application/json",
+        "User-Agent":    f"mahanai/{__version__}",
+    }
+    if account_id:
+        headers["ChatGPT-Account-Id"] = account_id
+
+    instructions = ""
+    input_msgs: list[dict] = []
+    for msg in messages:
+        if msg["role"] == "system":
+            instructions = msg["content"]
+            continue
+        content = msg["content"]
+        if isinstance(content, str):
+            # user → input_text, assistant → output_text
+            ctype = "input_text" if msg["role"] == "user" else "output_text"
+            content = [{"type": ctype, "text": content}]
+        input_msgs.append({"role": msg["role"], "content": content})
+
+    payload = {
+        "model":                model,
+        "instructions":         instructions,
+        "input":                input_msgs,
+        "store":                False,
+        "stream":               True,
+        "reasoning":            {"effort": "medium", "summary": "auto"},
+        "include":              [],
+        "tools":                [],
+        "tool_choice":          "auto",
+        "parallel_tool_calls":  True,
+    }
+
+    parts: list[str] = []
+    with httpx.Client(timeout=120.0) as hc:
+        with hc.stream("POST", url, headers=headers, json=payload) as resp:
+            if not resp.is_success:
+                body = resp.read().decode(errors="replace")
+                raise httpx.HTTPStatusError(
+                    f"{resp.status_code} — {body}", request=resp.request, response=resp
+                )
+            for line in resp.iter_lines():
+                line = line.strip()
+                if not line or not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    if chunk.get("type") == "response.output_text.delta":
+                        delta = chunk.get("delta", "")
+                        if delta:
+                            print(delta, end="", flush=True)
+                            parts.append(delta)
+                except Exception:
+                    continue
+    return "".join(parts)
+
+
+def _load_codex_indirect_key() -> str | None:
+    """Read the access token from a locally installed Codex CLI."""
+    candidate_dirs: list[Path] = [Path.home() / ".codex"]
+    if os.name == "nt":
+        for env in ("LOCALAPPDATA", "APPDATA"):
+            base = os.environ.get(env, "")
+            if base:
+                candidate_dirs.append(Path(base) / "OpenAI" / "Codex")
+    else:
+        candidate_dirs.append(Path.home() / ".config" / "codex")
+
+    for d in candidate_dirs:
+        auth_file = d / "auth.json"
+        if auth_file.is_file():
+            try:
+                raw = json.loads(auth_file.read_text(encoding="utf-8"))
+                token = raw.get("access") or raw.get("access_token") or raw.get("token")
+                expires = raw.get("expires", 0)
+                if token and (expires == 0 or time.time() * 1000 < expires - 30_000):
+                    return token
+            except Exception:
+                pass
+    return None
+
+
+def _run_codex_cli(prompt: str, model: str | None = None) -> None:
+    """Run Codex CLI as a subprocess (indirect fallback when no local token found)."""
+    cmd = ["codex", "-q", prompt]
+    if model:
+        cmd += ["--model", model]
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        for line in proc.stdout:
+            print(line, end="", flush=True)
+        proc.wait()
+    except FileNotFoundError:
+        print(f"{C.ERR}[Codex CLI not found] Install it with: npm i -g @openai/codex{C.RST}\n")
 
 
 def _model_selector(current_idx: int) -> int:
@@ -309,6 +623,8 @@ def _print_help() -> None:
         f"  /models                 Interactive model selector (↑↓ arrow keys)\n"
         f"  /mode claude            Quick-switch to Claude CLI mode\n"
         f"  /mode default           Quick-switch back to MahanAI server mode\n"
+        f"  /codex-login            Sign in to OpenAI via browser (Codex Direct)\n"
+        f"  /codex-logout           Remove saved OpenAI Codex credentials\n"
         f"  /help  /exit  /quit{C.RST}\n"
     )
 
@@ -423,6 +739,13 @@ def main() -> None:
                     f"{C.OK}NVIDIA API key saved.{C.RST} {C.DIM}Now calling NVIDIA directly (server bypassed).{C.RST}\n"
                 )
                 continue
+            if cmd == "/codex-login":
+                _codex_pkce_login()
+                continue
+            if cmd == "/codex-logout":
+                clear_codex_token()
+                print(f"{C.OK}OpenAI Codex credentials removed.{C.RST}\n")
+                continue
             print(f"{C.ERR}Unknown command.{C.RST} Try {C.DIM}/help{C.RST}\n")
             continue
 
@@ -434,6 +757,47 @@ def main() -> None:
             print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
             _run_claude_cli(user, model=claude_model)
             print("\n")
+            continue
+
+        if selected["mode"] == "codex_direct":
+            creds = _get_codex_direct_token()
+            if not creds:
+                print(
+                    f"{C.ERR}Not signed in to OpenAI.{C.RST} Run {C.OK}/codex-login{C.RST} first.\n"
+                )
+                continue
+            codex_access, codex_account_id = creds
+            history.append({"role": "user", "content": user})
+            print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
+            try:
+                reply = _stream_wham(codex_access, codex_account_id, history, selected["name"])
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                print()
+                print(f"{C.ERR}[Codex Direct error]{C.RST} {e}\n")
+                history.pop()
+                continue
+            print("\n")
+            history.append({"role": "assistant", "content": reply})
+            continue
+
+        if selected["mode"] == "codex_indirect":
+            indirect_token = _load_codex_indirect_key()
+            if indirect_token:
+                history.append({"role": "user", "content": user})
+                print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
+                try:
+                    reply = _stream_wham(indirect_token, None, history, selected["name"])
+                except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                    print()
+                    print(f"{C.ERR}[Codex Indirect error]{C.RST} {e}\n")
+                    history.pop()
+                    continue
+                print("\n")
+                history.append({"role": "assistant", "content": reply})
+            else:
+                print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
+                _run_codex_cli(user, model=selected["name"])
+                print("\n")
             continue
 
         if selected["mode"] == "nvidia_direct":

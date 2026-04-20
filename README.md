@@ -13,16 +13,37 @@ mahanai
 
 ## Models
 
-MahanAI Super supports multiple backends selectable at runtime:
+MahanAI Super supports multiple backends selectable at runtime via `/models`.
+
+### NVIDIA NIM
 
 | Pretty Name       | Model ID                        | Backend             |
 |-------------------|---------------------------------|---------------------|
 | Llama 3.3 70B     | meta/llama-3.3-70b-instruct     | NVIDIA NIM (direct) |
-| Claude Opus 4     | claude-opus-4-7                 | Claude CLI          |
-| Claude Sonnet 4.6 | claude-sonnet-4-6               | Claude CLI          |
-| Claude Haiku 4.5  | claude-haiku-4-5-20251001       | Claude CLI          |
 
 > **Note:** A legacy server mode (`mahanai/mahanai`) exists in the model selector but is undocumented and not recommended for use.
+
+### Claude
+
+| Pretty Name       | Model ID                  | Backend    |
+|-------------------|---------------------------|------------|
+| Claude Opus 4     | claude-opus-4-7           | Claude CLI |
+| Claude Sonnet 4.6 | claude-sonnet-4-6         | Claude CLI |
+| Claude Haiku 4.5  | claude-haiku-4-5-20251001 | Claude CLI |
+
+### OpenAI Codex
+
+Seven models available, each accessible in **Direct** and **Indirect** mode (see [OpenAI Codex](#openai-codex-1) below):
+
+| Pretty Name        | Model ID            |
+|--------------------|---------------------|
+| GPT-5.4            | gpt-5.4             |
+| GPT-5.2-Codex      | gpt-5.2-codex       |
+| GPT-5.1-Codex-Max  | gpt-5.1-codex-max   |
+| GPT-5.4-Mini       | gpt-5.4-mini        |
+| GPT-5.3-Codex      | gpt-5.3-codex       |
+| GPT-5.2            | gpt-5.2             |
+| GPT-5.1-Codex-Mini | gpt-5.1-codex-mini  |
 
 Switch models interactively with `/models` (arrow-key selector) or quick-switch with `/mode claude` / `/mode default`.
 
@@ -37,6 +58,8 @@ Switch models interactively with `/models` (arrow-key selector) or quick-switch 
 | `/api-key clear` | Remove saved server key |
 | `/api-key-nvidia [key]` | Save NVIDIA direct API key |
 | `/api-key-nvidia clear` | Remove NVIDIA key, switch back to server |
+| `/codex-login` | Sign in to OpenAI via browser (Codex Direct mode) |
+| `/codex-logout` | Remove saved OpenAI Codex credentials |
 | `/help` | Show help |
 | `/exit` or `/quit` | Leave |
 
@@ -51,6 +74,38 @@ Keys are stored under `%APPDATA%\MahanAI\config.json` on Windows or `~/.config/m
 
 ### Claude CLI mode
 Claude models use your local `claude` CLI installation. Make sure [Claude Code](https://claude.ai/code) is installed and on your PATH. No extra API key configuration needed inside MahanAI — it uses whatever account Claude CLI is authenticated with.
+
+### OpenAI Codex
+
+MahanAI supports two Codex authentication modes:
+
+#### Direct mode
+Signs in to your OpenAI account via a browser-based OAuth PKCE flow — no API key needed.
+
+```
+/codex-login
+```
+
+This opens your browser to `auth.openai.com`. After you approve, MahanAI receives and stores the access token automatically. Tokens are refreshed silently before they expire (saved to the same `config.json` as other keys).
+
+#### Indirect mode
+Reads credentials from a locally installed and signed-in [OpenAI Codex CLI](https://github.com/openai/codex). MahanAI looks for `auth.json` in these locations:
+
+| Platform | Paths checked |
+|---|---|
+| Windows | `%LOCALAPPDATA%\OpenAI\Codex\auth.json`, `~\.codex\auth.json` |
+| macOS / Linux | `~/.codex/auth.json`, `~/.config/codex/auth.json` |
+
+If no token file is found, MahanAI falls back to running the `codex` CLI as a subprocess (requires Codex CLI on your PATH).
+
+To use indirect mode, install and sign in to the Codex CLI first:
+
+```bash
+npm i -g @openai/codex
+codex login
+```
+
+Then select any **OpenAI Codex (Indirect)** model from `/models`.
 
 ## Environment Variables
 
