@@ -1,4 +1,4 @@
-<img width="600" alt="icon" src="https://github.com/user-attachments/assets/07c20ad0-61ef-47a6-b973-1e86b22be201" />
+<img width="600" alt="icon" src="https://github.com/user-attachments/assets/cd42b84f-78b8-4cdf-b9b7-c784d9f78ac3" />
 
 # MahanAI Super
 
