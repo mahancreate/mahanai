@@ -190,21 +190,42 @@ _CLAUDE_IDENTITY = (
 
 
 def _run_claude_cli(prompt: str, model: str | None = None) -> None:
-    """Send a prompt to the Claude CLI and stream output line-by-line."""
-    cmd = _resolve_cli("claude") + ["--system-prompt", _CLAUDE_IDENTITY, "-p", prompt]
+    """Send a prompt to the Claude CLI and stream output via stream-json events."""
+    cmd = _resolve_cli("claude") + [
+        "--system-prompt", _CLAUDE_IDENTITY,
+        "-p", prompt,
+        "--output-format", "stream-json",
+    ]
     if model:
         cmd += ["--model", model]
     try:
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
         )
         for line in proc.stdout:
-            print(line, end="", flush=True)
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+                etype = event.get("type", "")
+                if etype == "content_block_delta":
+                    delta = event.get("delta", {})
+                    if isinstance(delta, dict) and delta.get("type") == "text_delta":
+                        text = delta.get("text", "")
+                        if text:
+                            print(text, end="", flush=True)
+                elif etype == "text":
+                    text = event.get("text", "")
+                    if text:
+                        print(text, end="", flush=True)
+            except (json.JSONDecodeError, KeyError):
+                print(line, end="", flush=True)
         proc.wait()
     except FileNotFoundError:
         print(f"{C.ERR}[Claude CLI not found] Make sure 'claude' is installed and on your PATH.{C.RST}")
@@ -438,11 +459,20 @@ def _stream_wham(
                     break
                 try:
                     chunk = json.loads(data)
+                    delta_text = ""
                     if chunk.get("type") == "response.output_text.delta":
-                        delta = chunk.get("delta", "")
-                        if delta:
-                            print(delta, end="", flush=True)
-                            parts.append(delta)
+                        # Responses API: delta is a string or {"text": "..."}
+                        raw_delta = chunk.get("delta", "")
+                        if isinstance(raw_delta, str):
+                            delta_text = raw_delta
+                        elif isinstance(raw_delta, dict):
+                            delta_text = raw_delta.get("text", "")
+                    elif chunk.get("choices"):
+                        # Chat completions SSE fallback
+                        delta_text = chunk["choices"][0].get("delta", {}).get("content", "") or ""
+                    if delta_text:
+                        print(delta_text, end="", flush=True)
+                        parts.append(delta_text)
                 except Exception:
                     continue
     return "".join(parts)
