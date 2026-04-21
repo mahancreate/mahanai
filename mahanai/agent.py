@@ -224,9 +224,21 @@ def _run_claude_cli(prompt: str, model: str | None = None) -> None:
                     text = event.get("text", "")
                     if text:
                         print(text, end="", flush=True)
+                elif etype == "assistant":
+                    # Claude Code stream-json format: complete assistant message event
+                    message = event.get("message", {})
+                    for block in message.get("content", []):
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text = block.get("text", "")
+                            if text:
+                                print(text, end="", flush=True)
             except (json.JSONDecodeError, KeyError):
                 print(line, end="", flush=True)
         proc.wait()
+        if proc.returncode != 0:
+            err = proc.stderr.read().strip()
+            if err:
+                print(f"\n{C.ERR}[Claude CLI error]{C.RST} {err}")
     except FileNotFoundError:
         print(f"{C.ERR}[Claude CLI not found] Make sure 'claude' is installed and on your PATH.{C.RST}")
 
