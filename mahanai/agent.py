@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import subprocess
 import time
 import webbrowser
@@ -22,14 +23,17 @@ from openai import APIStatusError, OpenAI
 from mahanai import __version__, colors as C
 from mahanai.config import (
     clear_codex_token,
+    clear_custom_endpoint,
     clear_nvidia_api_key,
     clear_saved_api_key,
     config_file_path,
     load_codex_token,
+    load_custom_endpoint,
     load_nvidia_api_key,
     resolve_api_key,
     save_api_key,
     save_codex_token,
+    save_custom_endpoint,
     save_nvidia_api_key,
 )
 from mahanai.system_info import describe_runtime
@@ -54,6 +58,7 @@ AVAILABLE_MODELS: list[dict] = [
     {"label": "Claude Opus 4",         "name": "claude-opus-4-7",            "note": "opus",     "group": "Claude",               "mode": "claude", "claude_model": "claude-opus-4-7"},
     {"label": "Claude Sonnet 4.6",     "name": "claude-sonnet-4-6",          "note": "sonnet",   "group": "Claude",               "mode": "claude", "claude_model": "claude-sonnet-4-6"},
     {"label": "Claude Haiku 4.5",      "name": "claude-haiku-4-5-20251001",  "note": "haiku",    "group": "Claude",               "mode": "claude", "claude_model": "claude-haiku-4-5-20251001"},
+
     {"label": "GPT-5.4",               "name": "gpt-5.4",                    "note": "direct",   "group": "OpenAI Codex (Direct)",  "mode": "codex_direct"},
     {"label": "GPT-5.2-Codex",         "name": "gpt-5.2-codex",              "note": "direct",   "group": "OpenAI Codex (Direct)",  "mode": "codex_direct"},
     {"label": "GPT-5.1-Codex-Max",     "name": "gpt-5.1-codex-max",          "note": "direct",   "group": "OpenAI Codex (Direct)",  "mode": "codex_direct"},
@@ -68,6 +73,7 @@ AVAILABLE_MODELS: list[dict] = [
     {"label": "GPT-5.3-Codex",         "name": "gpt-5.3-codex",              "note": "indirect", "group": "OpenAI Codex (Indirect)","mode": "codex_indirect"},
     {"label": "GPT-5.2",               "name": "gpt-5.2",                    "note": "indirect", "group": "OpenAI Codex (Indirect)","mode": "codex_indirect"},
     {"label": "GPT-5.1-Codex-Mini",    "name": "gpt-5.1-codex-mini",         "note": "indirect", "group": "OpenAI Codex (Indirect)","mode": "codex_indirect"},
+    {"label": "Custom Endpoint",        "name": "custom",                      "note": "custom",   "group": "Custom",                 "mode": "custom"},
 ]
 
 from rich.console import Console
@@ -127,16 +133,13 @@ def _stream_direct(api_key: str, messages: list[dict[str, Any]], model: str, bas
     }
     payload = {"model": model, "messages": messages, "stream": True}
 
-    print(f"\n[DEBUG] Hitting: {url}", flush=True)
     with httpx.Client(timeout=120.0) as client:
         with client.stream("POST", url, headers=headers, json=payload) as response:
-            print(f"[DEBUG] Status: {response.status_code}", flush=True)
             response.raise_for_status()
             for line in response.iter_lines():
                 line = line.strip()
                 if not line:
                     continue
-                print(f"[DEBUG] Raw line: {repr(line)}", flush=True)
                 if line.startswith("data: "):
                     line = line[6:]
                 if line == "[DONE]":
@@ -147,8 +150,7 @@ def _stream_direct(api_key: str, messages: list[dict[str, Any]], model: str, bas
                     if delta:
                         print(delta, end="", flush=True)
                         content_parts.append(delta)
-                except Exception as e:
-                    print(f"[DEBUG] Parse error: {e} on line: {repr(line)}", flush=True)
+                except Exception:
                     continue
 
     return "".join(content_parts)
@@ -171,9 +173,25 @@ def _fetch_direct(api_key: str, messages: list[dict[str, Any]], model: str, base
         return content
 
 
+def _resolve_cli(name: str) -> list[str]:
+    """Return a command prefix that works for .cmd/.bat scripts on Windows."""
+    if os.name == "nt":
+        path = shutil.which(name)
+        if path and path.lower().endswith((".cmd", ".bat")):
+            return ["cmd", "/c", path]
+    return [name]
+
+
+_CLAUDE_IDENTITY = (
+    "You are MahanAI, a capable coding and system assistant (Super 2.0). "
+    "Do not refer to yourself as Claude or Claude Code — you are MahanAI. "
+    "Super 2.0 is the codename for this release of MahanAI."
+)
+
+
 def _run_claude_cli(prompt: str, model: str | None = None) -> None:
     """Send a prompt to the Claude CLI and stream output line-by-line."""
-    cmd = ["claude", "-p", prompt]
+    cmd = _resolve_cli("claude") + ["--system-prompt", _CLAUDE_IDENTITY, "-p", prompt]
     if model:
         cmd += ["--model", model]
     try:
@@ -190,6 +208,7 @@ def _run_claude_cli(prompt: str, model: str | None = None) -> None:
         proc.wait()
     except FileNotFoundError:
         print(f"{C.ERR}[Claude CLI not found] Make sure 'claude' is installed and on your PATH.{C.RST}")
+
 
 
 def _extract_account_id(id_token: str | None, access_token: str | None) -> str | None:
@@ -572,6 +591,7 @@ def run_turn(
     return limit_msg
 
 
+
 def build_system_prompt(workspace: Path) -> str:
     env_line = describe_runtime()
     comspec = os.environ.get("ComSpec", "cmd.exe")
@@ -622,9 +642,12 @@ def _print_help() -> None:
         f"  Env MAHANAI_API_KEY overrides the saved file.\n"
         f"  /models                 Interactive model selector (↑↓ arrow keys)\n"
         f"  /mode claude            Quick-switch to Claude CLI mode\n"
+
         f"  /mode default           Quick-switch back to MahanAI server mode\n"
         f"  /codex-login            Sign in to OpenAI via browser (Codex Direct)\n"
         f"  /codex-logout           Remove saved OpenAI Codex credentials\n"
+        f"  /custom [url [model [key]]]  Configure a custom OpenAI-compatible endpoint\n"
+        f"  /custom clear           Remove saved custom endpoint\n"
         f"  /help  /exit  /quit{C.RST}\n"
     )
 
@@ -640,6 +663,7 @@ def main() -> None:
     )
 
     system_prompt = build_system_prompt(workspace)
+
     history: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
 
     active_model_idx = 0  # index into AVAILABLE_MODELS
@@ -692,6 +716,7 @@ def main() -> None:
                         i for i, m in enumerate(AVAILABLE_MODELS) if m.get("claude_model") == "claude-sonnet-4-6"
                     )
                     print(f"{C.OK}Switched to:{C.RST} {AVAILABLE_MODELS[active_model_idx]['label']}\n")
+
                 elif target in {"default", "server", "mahanai", ""}:
                     active_model_idx = 1
                     print(f"{C.OK}Switched to:{C.RST} {AVAILABLE_MODELS[1]['label']}\n")
@@ -746,6 +771,38 @@ def main() -> None:
                 clear_codex_token()
                 print(f"{C.OK}OpenAI Codex credentials removed.{C.RST}\n")
                 continue
+            if cmd == "/custom":
+                sub = rest.strip()
+                if sub.lower() == "clear":
+                    clear_custom_endpoint()
+                    print(f"{C.OK}Custom endpoint removed.{C.RST}\n")
+                    continue
+                # Parse inline args: url [model [api_key]]
+                parts = sub.split(None, 2)
+                if parts:
+                    c_url = parts[0]
+                    c_model = parts[1] if len(parts) > 1 else ""
+                    c_key = parts[2] if len(parts) > 2 else ""
+                else:
+                    existing = load_custom_endpoint()
+                    print(f"\n{C.DIM}  Configure a custom OpenAI-compatible endpoint.{C.RST}")
+                    if existing:
+                        print(f"{C.DIM}  Current: {existing['url']}  model={existing['model']}{C.RST}")
+                    c_url = input("  Base URL (e.g. http://localhost:11434/v1): ").strip()
+                    if not c_url:
+                        print(f"{C.ERR}No URL entered; cancelled.{C.RST}\n")
+                        continue
+                    c_model = input("  Model name [gpt-3.5-turbo]: ").strip()
+                    c_key = input("  API key (leave blank if none): ").strip()
+                if not c_model:
+                    c_model = "gpt-3.5-turbo"
+                save_custom_endpoint(c_url, c_model, c_key)
+                print(
+                    f"{C.OK}Custom endpoint saved.{C.RST} "
+                    f"{C.DIM}URL={c_url}  model={c_model}{C.RST}\n"
+                    f"{C.DIM}  Use /models to switch to 'Custom Endpoint'.{C.RST}\n"
+                )
+                continue
             print(f"{C.ERR}Unknown command.{C.RST} Try {C.DIM}/help{C.RST}\n")
             continue
 
@@ -758,6 +815,7 @@ def main() -> None:
             _run_claude_cli(user, model=claude_model)
             print("\n")
             continue
+
 
         if selected["mode"] == "codex_direct":
             creds = _get_codex_direct_token()
@@ -798,6 +856,33 @@ def main() -> None:
                 print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
                 _run_codex_cli(user, model=selected["name"])
                 print("\n")
+            continue
+
+        if selected["mode"] == "custom":
+            custom_cfg = load_custom_endpoint()
+            if not custom_cfg:
+                print(
+                    f"{C.ERR}No custom endpoint configured.{C.RST} Use {C.OK}/custom{C.RST} to set one.\n"
+                )
+                continue
+            history.append({"role": "user", "content": user})
+            print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
+            try:
+                reply = run_turn(
+                    client,
+                    custom_cfg["api_key"] or "none",
+                    custom_cfg["model"],
+                    history,
+                    workspace,
+                    custom_cfg["url"],
+                )
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                print()
+                print(f"{C.ERR}[Custom endpoint error]{C.RST} {e}\n")
+                history.pop()
+                continue
+            print("\n")
+            history.append({"role": "assistant", "content": reply})
             continue
 
         if selected["mode"] == "nvidia_direct":

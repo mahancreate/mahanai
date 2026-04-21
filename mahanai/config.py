@@ -126,3 +126,33 @@ def clear_codex_token() -> None:
             path.unlink()
         except OSError:
             pass
+
+
+def save_custom_endpoint(url: str, model: str, api_key: str) -> None:
+    data = _read_config()
+    data["custom_endpoint"] = {
+        "url": url.strip(),
+        "model": model.strip(),
+        "api_key": api_key.strip(),
+    }
+    _write_config(data)
+
+
+def load_custom_endpoint() -> dict[str, str] | None:
+    entry = _read_config().get("custom_endpoint")
+    if not entry or not entry.get("url"):
+        return None
+    return entry
+
+
+def clear_custom_endpoint() -> None:
+    data = _read_config()
+    data.pop("custom_endpoint", None)
+    if data:
+        _write_config(data)
+    else:
+        path = config_file_path()
+        try:
+            path.unlink()
+        except OSError:
+            pass
