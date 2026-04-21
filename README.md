@@ -47,6 +47,16 @@ Seven models available, each accessible in **Direct** and **Indirect** mode (see
 
 Switch models interactively with `/models` (arrow-key selector) or quick-switch with `/mode claude` / `/mode default`.
 
+### Custom Endpoint
+
+Point MahanAI at any OpenAI-compatible API (Ollama, LM Studio, vLLM, OpenRouter, etc.):
+
+```
+/custom http://localhost:11434/v1 llama3 [optional-api-key]
+```
+
+Once saved, select **Custom Endpoint** from `/models` to start using it. The config persists across sessions.
+
 ## Commands
 
 | Command | Description |
@@ -60,6 +70,8 @@ Switch models interactively with `/models` (arrow-key selector) or quick-switch 
 | `/api-key-nvidia clear` | Remove NVIDIA key, switch back to server |
 | `/codex-login` | Sign in to OpenAI via browser (Codex Direct mode) |
 | `/codex-logout` | Remove saved OpenAI Codex credentials |
+| `/custom [url [model [key]]]` | Configure a custom OpenAI-compatible endpoint |
+| `/custom clear` | Remove saved custom endpoint |
 | `/help` | Show help |
 | `/exit` or `/quit` | Leave |
 
@@ -106,6 +118,37 @@ codex login
 ```
 
 Then select any **OpenAI Codex (Indirect)** model from `/models`.
+
+### Custom Endpoint
+
+Use `/custom` to connect to any OpenAI-compatible server — Ollama, LM Studio, vLLM, OpenRouter, or your own deployment.
+
+**Interactive setup** (prompts for each field):
+```
+/custom
+```
+
+**One-liner:**
+```
+/custom <base-url> [model] [api-key]
+```
+
+Examples:
+```
+/custom http://localhost:11434/v1 llama3
+/custom http://localhost:1234/v1 mistral-7b
+/custom https://openrouter.ai/api/v1 openai/gpt-4o sk-or-...
+```
+
+- `base-url` — the `/v1` base URL of the server
+- `model` — model ID to send in requests (defaults to `gpt-3.5-turbo` if omitted)
+- `api-key` — leave blank if the server doesn't require one
+
+After saving, run `/models` and select **Custom Endpoint**, or the agent will remind you to switch if you haven't already. To remove the config:
+
+```
+/custom clear
+```
 
 ## Environment Variables
 
