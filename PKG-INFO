@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mahanai
-Version: 4.3.9
+Version: 4.3.10
 Summary: MahanAI: terminal AI agent for NVIDIA NIM (OpenAI-compatible), tools, streaming, /api-key, safety prompts.
 Author: MahanAI
 License-Expression: MIT
@@ -23,7 +23,7 @@ Requires-Dist: httpx>=0.27.0
 Requires-Dist: rich>=13.0.0
 Dynamic: license-file
 
-<img width="600" alt="icon" src="https://github.com/user-attachments/assets/cd42b84f-78b8-4cdf-b9b7-c784d9f78ac3" />
+<img width="600" alt="icon" src="https://github.com/user-attachments/assets/b244d2fb-2c0a-48fd-9b87-33ea1c08b14f" />
 
 # MahanAI Super
 
