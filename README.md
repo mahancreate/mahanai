@@ -1,0 +1,225 @@
+<img width="600" alt="icon" src="https://github.com/user-attachments/assets/07c20ad0-61ef-47a6-b973-1e86b22be201" />
+
+# MahanAI Super
+
+Terminal AI agent (Super 2.0) with multi-model support, streaming chat, tools, and a built-in Claude CLI mode. Docs: [MahanAI](https://mahancreate.github.io/mahanai).
+
+## Install
+
+```bash
+pip install mahanai
+mahanai
+```
+
+## Launch Options
+
+| Flag | Description |
+|---|---|
+| `--compact` | Compact mode: renders a small **MAI** ASCII logo and a trimmed header (no streaming hint, no `/api-key` reminder) |
+
+```bash
+mahanai --compact
+```
+
+Compact banner looks like:
+
+```
+===================================
+  Super 2.0  |  <Model>  |
+  /help  /exit  /quit
+===================================
+```
+
+## Models
+
+MahanAI Super supports multiple backends selectable at runtime via `/models`.
+
+### NVIDIA NIM
+
+| Pretty Name       | Model ID                        | Backend             |
+|-------------------|---------------------------------|---------------------|
+| Llama 3.3 70B     | meta/llama-3.3-70b-instruct     | NVIDIA NIM (direct) |
+
+> **Note:** A legacy server mode (`mahanai/mahanai`) exists in the model selector but is undocumented and not recommended for use.
+
+### Claude
+
+| Pretty Name       | Model ID                  | Backend    |
+|-------------------|---------------------------|------------|
+| Claude Opus 4     | claude-opus-4-7           | Claude CLI |
+| Claude Sonnet 4.6 | claude-sonnet-4-6         | Claude CLI |
+| Claude Haiku 4.5  | claude-haiku-4-5-20251001 | Claude CLI |
+
+### OpenAI Codex
+
+Seven models available, each accessible in **Direct** and **Indirect** mode (see [OpenAI Codex](#openai-codex-1) below):
+
+| Pretty Name        | Model ID            |
+|--------------------|---------------------|
+| GPT-5.4            | gpt-5.4             |
+| GPT-5.2-Codex      | gpt-5.2-codex       |
+| GPT-5.1-Codex-Max  | gpt-5.1-codex-max   |
+| GPT-5.4-Mini       | gpt-5.4-mini        |
+| GPT-5.3-Codex      | gpt-5.3-codex       |
+| GPT-5.2            | gpt-5.2             |
+| GPT-5.1-Codex-Mini | gpt-5.1-codex-mini  |
+
+Switch models interactively with `/models` (arrow-key selector) or quick-switch with `/mode claude` / `/mode default`.
+
+### Custom Endpoint
+
+Point MahanAI at any OpenAI-compatible API (Ollama, LM Studio, vLLM, OpenRouter, etc.):
+
+```
+/custom http://localhost:11434/v1 llama3 [optional-api-key]
+```
+
+Once saved, select **Custom Endpoint** from `/models` to start using it. The config persists across sessions.
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `/models` | Interactive model selector (↑↓ arrows, Enter to confirm, Esc to cancel) |
+| `/mode claude` | Quick-switch to Claude Sonnet 4.6 |
+| `/mode default` | Quick-switch back to MahanAI Super (server) |
+| `/api-key [key]` | Save server API key (omit key for hidden prompt) |
+| `/api-key clear` | Remove saved server key |
+| `/api-key-nvidia [key]` | Save NVIDIA direct API key |
+| `/api-key-nvidia clear` | Remove NVIDIA key, switch back to server |
+| `/codex-login` | Sign in to OpenAI via browser (Codex Direct mode) |
+| `/codex-logout` | Remove saved OpenAI Codex credentials |
+| `/custom [url [model [key]]]` | Configure a custom OpenAI-compatible endpoint |
+| `/custom clear` | Remove saved custom endpoint |
+| `/help` | Show help |
+| `/exit` or `/quit` | Leave |
+
+## API Keys
+
+### Server / NVIDIA NIM
+1. **Environment:** `MAHANAI_API_KEY=...`
+2. **Project `.env`:** `MAHANAI_API_KEY=...`
+3. **In-app:** `/api-key your-key`
+
+Keys are stored under `%APPDATA%\MahanAI\config.json` on Windows or `~/.config/mahanai/config.json` on Linux/macOS.
+
+### Claude CLI mode
+Claude models use your local `claude` CLI installation. Make sure [Claude Code](https://claude.ai/code) is installed and on your PATH. No extra API key configuration needed inside MahanAI — it uses whatever account Claude CLI is authenticated with.
+
+### OpenAI Codex
+
+MahanAI supports two Codex authentication modes:
+
+#### Direct mode
+Signs in to your OpenAI account via a browser-based OAuth PKCE flow — no API key needed.
+
+```
+/codex-login
+```
+
+This opens your browser to `auth.openai.com`. After you approve, MahanAI receives and stores the access token automatically. Tokens are refreshed silently before they expire (saved to the same `config.json` as other keys).
+
+#### Indirect mode
+Reads credentials from a locally installed and signed-in [OpenAI Codex CLI](https://github.com/openai/codex). MahanAI looks for `auth.json` in these locations:
+
+| Platform | Paths checked |
+|---|---|
+| Windows | `%LOCALAPPDATA%\OpenAI\Codex\auth.json`, `~\.codex\auth.json` |
+| macOS / Linux | `~/.codex/auth.json`, `~/.config/codex/auth.json` |
+
+If no token file is found, MahanAI falls back to running the `codex` CLI as a subprocess (requires Codex CLI on your PATH).
+
+To use indirect mode, install and sign in to the Codex CLI first:
+
+```bash
+npm i -g @openai/codex
+codex login
+```
+
+Then select any **OpenAI Codex (Indirect)** model from `/models`.
+
+### Custom Endpoint
+
+Use `/custom` to connect to any OpenAI-compatible server — Ollama, LM Studio, vLLM, OpenRouter, or your own deployment.
+
+**Interactive setup** (prompts for each field):
+```
+/custom
+```
+
+**One-liner:**
+```
+/custom <base-url> [model] [api-key]
+```
+
+Examples:
+```
+/custom http://localhost:11434/v1 llama3
+/custom http://localhost:1234/v1 mistral-7b
+/custom https://openrouter.ai/api/v1 openai/gpt-4o sk-or-...
+```
+
+- `base-url` — the `/v1` base URL of the server
+- `model` — model ID to send in requests (defaults to `gpt-3.5-turbo` if omitted)
+- `api-key` — leave blank if the server doesn't require one
+
+After saving, run `/models` and select **Custom Endpoint**, or the agent will remind you to switch if you haven't already. To remove the config:
+
+```
+/custom clear
+```
+
+## Environment Variables
+
+| Variable | Purpose |
+|---|---|
+| `MAHANAI_API_KEY` | Override saved server API key |
+| `MAHANAI_MODEL` | Override default model ID |
+| `MAHANAI_STREAM` | Set to `0`/`false`/`no`/`off` to disable streaming |
+| `MAHANAI_CONFIG_DIR` | Override config file directory |
+| `NO_COLOR` | Disable terminal colors |
+
+## Tools
+
+MahanAI can execute tools on your behalf:
+
+- **run_command** — run shell commands (asks confirmation before destructive ops)
+- **read_file** — read a file
+- **write_file** — write a file
+- **append_file** — append to a file
+- **list_directory** — list directory contents
+
+## Develop
+
+```bash
+pip install -e .
+python -m mahanai
+```
+
+## Publish to PyPI
+
+Bump `version` in both `pyproject.toml` and `mahanai/__init__.py`, then:
+
+```bash
+pip install build twine
+python -m build
+python -m twine check dist/*
+```
+
+**Windows (PowerShell):**
+
+```powershell
+$env:TWINE_USERNAME = "__token__"
+$env:TWINE_PASSWORD = "pypi-YOUR_TOKEN_HERE"
+python -m twine upload dist/mahanai-4.0.0*
+```
+
+**macOS / Linux:**
+
+```bash
+export TWINE_USERNAME=__token__
+export TWINE_PASSWORD=pypi-YOUR_TOKEN_HERE
+python -m twine upload dist/mahanai-4.0.0*
+```
+
+`twine` cannot publish without your token; keep it out of git.
