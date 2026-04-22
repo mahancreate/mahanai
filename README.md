@@ -66,6 +66,8 @@ Seven models available, each accessible in **Direct** and **Indirect** mode (see
 
 Switch models interactively with `/models` (arrow-key selector) or quick-switch with `/mode claude` / `/mode default`.
 
+> **Default model:** MahanAI starts on **Claude Haiku 4.5** out of the box.
+
 ### Custom Endpoint
 
 Point MahanAI at any OpenAI-compatible API (Ollama, LM Studio, vLLM, OpenRouter, etc.):
@@ -83,6 +85,9 @@ Once saved, select **Custom Endpoint** from `/models` to start using it. The con
 | `/models` | Interactive model selector (↑↓ arrows, Enter to confirm, Esc to cancel) |
 | `/mode claude` | Quick-switch to Claude Sonnet 4.6 |
 | `/mode default` | Quick-switch back to MahanAI Super (server) |
+| `/effort <level>` | Set reasoning effort: `low`, `medium`, `high`, `very-high` |
+| `/plan on` | Enable plan mode — MahanAI outlines a plan before every response |
+| `/plan off` | Disable plan mode |
 | `/api-key [key]` | Save server API key (omit key for hidden prompt) |
 | `/api-key clear` | Remove saved server key |
 | `/api-key-nvidia [key]` | Save NVIDIA direct API key |
@@ -93,6 +98,38 @@ Once saved, select **Custom Endpoint** from `/models` to start using it. The con
 | `/custom clear` | Remove saved custom endpoint |
 | `/help` | Show help |
 | `/exit` or `/quit` | Leave |
+
+## Effort Levels
+
+`/effort` controls how much reasoning the model applies before responding. This affects response depth, quality, and token usage.
+
+| Level | Effect |
+|---|---|
+| `low` | Concise and fast. Minimal reasoning. |
+| `medium` | Balanced (default). |
+| `high` | Careful, thorough reasoning before responding. |
+| `very-high` | Maximum reasoning depth. ⚠️ Significantly higher token usage and slower responses. |
+
+```
+/effort high
+/effort very-high
+```
+
+> **Note:** Effort is disabled for **Claude Haiku 4.5** — it does not support extended thinking. Switch to Opus or Sonnet to use effort levels.
+
+For **OpenAI Codex** models, effort maps to the `reasoning.effort` parameter (`low` / `medium` / `high`).
+For **Claude** models (Opus, Sonnet), the effort instruction is prepended to your prompt to guide reasoning depth.
+
+## Plan Mode
+
+Plan mode instructs MahanAI to outline its approach before taking action on every message — useful for complex multi-step tasks where you want visibility into the reasoning before execution.
+
+```
+/plan on    # enable
+/plan off   # disable
+```
+
+Plan mode works across all model backends.
 
 ## API Keys
 

@@ -206,12 +206,27 @@ _CLAUDE_IDENTITY = (
     "Super 2.0 is the codename for this release of MahanAI."
 )
 
+_EFFORT_INSTRUCTIONS: dict[str, str] = {
+    "low":       "Be concise and direct. Skip lengthy explanations.",
+    "medium":    "",
+    "high":      "Think through this carefully and thoroughly before responding.",
+    "very-high": "Reason extensively and deeply before responding, considering all relevant angles and edge cases.",
+}
 
-def _run_claude_cli(prompt: str, model: str | None = None) -> None:
+_EFFORT_CODEX: dict[str, str] = {
+    "low":       "low",
+    "medium":    "medium",
+    "high":      "high",
+    "very-high": "high",
+}
+
+
+def _run_claude_cli(prompt: str, model: str | None = None, effort_instruction: str = "") -> None:
     """Stream a prompt to the Claude CLI via stream-json events."""
+    full_prompt = f"{effort_instruction}\n\n{prompt}".strip() if effort_instruction else prompt
     cmd = _resolve_cli("claude") + [
         "--system-prompt", _CLAUDE_IDENTITY,
-        "-p", prompt,
+        "-p", full_prompt,
         "--output-format", "stream-json",
         "--verbose",
     ]
@@ -439,8 +454,23 @@ def _stream_wham(
     account_id: str | None,
     messages: list[dict[str, Any]],
     model: str,
+    reasoning_effort: str = "medium",
+    workspace: Path | None = None,
 ) -> str:
-    """Stream a response from the WHAM (ChatGPT backend) Responses API."""
+    """Stream a response from the WHAM (ChatGPT backend) Responses API with tool-call support."""
+    ws = workspace or Path.cwd()
+
+    # Convert TOOLS to Responses API format (flattened, not nested under "function")
+    tools_resp = [
+        {
+            "type": "function",
+            "name": t["function"]["name"],
+            "description": t["function"].get("description", ""),
+            "parameters": t["function"].get("parameters", {}),
+        }
+        for t in TOOLS
+    ]
+
     url = CODEX_API_URL.rstrip("/") + "/responses"
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -458,58 +488,106 @@ def _stream_wham(
             continue
         content = msg["content"]
         if isinstance(content, str):
-            # user → input_text, assistant → output_text
             ctype = "input_text" if msg["role"] == "user" else "output_text"
             content = [{"type": ctype, "text": content}]
         input_msgs.append({"role": msg["role"], "content": content})
 
-    payload = {
-        "model":                model,
-        "instructions":         instructions,
-        "input":                input_msgs,
-        "store":                False,
-        "stream":               True,
-        "reasoning":            {"effort": "medium", "summary": "auto"},
-        "include":              [],
-        "tools":                [],
-        "tool_choice":          "auto",
-        "parallel_tool_calls":  True,
-    }
+    all_parts: list[str] = []
 
-    parts: list[str] = []
-    with httpx.Client(timeout=120.0) as hc:
-        with hc.stream("POST", url, headers=headers, json=payload) as resp:
-            if not resp.is_success:
-                body = resp.read().decode(errors="replace")
-                raise httpx.HTTPStatusError(
-                    f"{resp.status_code} — {body}", request=resp.request, response=resp
-                )
-            for line in resp.iter_lines():
-                line = line.strip()
-                if not line or not line.startswith("data: "):
-                    continue
-                data = line[6:]
-                if data == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(data)
-                    delta_text = ""
-                    if chunk.get("type") == "response.output_text.delta":
-                        # Responses API: delta is a string or {"text": "..."}
-                        raw_delta = chunk.get("delta", "")
-                        if isinstance(raw_delta, str):
-                            delta_text = raw_delta
-                        elif isinstance(raw_delta, dict):
-                            delta_text = raw_delta.get("text", "")
-                    elif chunk.get("choices"):
-                        # Chat completions SSE fallback
-                        delta_text = chunk["choices"][0].get("delta", {}).get("content", "") or ""
-                    if delta_text:
-                        print(delta_text, end="", flush=True)
-                        parts.append(delta_text)
-                except Exception:
-                    continue
-    return "".join(parts)
+    for _round in range(32):
+        payload = {
+            "model":               model,
+            "instructions":        instructions,
+            "input":               input_msgs,
+            "store":               False,
+            "stream":              True,
+            "reasoning":           {"effort": reasoning_effort},
+            "include":             [],
+            "tools":               tools_resp,
+            "tool_choice":         "auto",
+            "parallel_tool_calls": True,
+        }
+
+        parts: list[str] = []
+        tool_calls: dict[str, dict] = {}  # call_id -> {name, args_parts}
+        cur_call_id: str | None = None
+
+        with httpx.Client(timeout=120.0) as hc:
+            with hc.stream("POST", url, headers=headers, json=payload) as resp:
+                if not resp.is_success:
+                    body = resp.read().decode(errors="replace")
+                    raise httpx.HTTPStatusError(
+                        f"{resp.status_code} — {body}", request=resp.request, response=resp
+                    )
+                for line in resp.iter_lines():
+                    line = line.strip()
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data = line[6:]
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        ctype = chunk.get("type", "")
+
+                        if ctype == "response.output_text.delta":
+                            raw_delta = chunk.get("delta", "")
+                            delta_text = raw_delta if isinstance(raw_delta, str) else raw_delta.get("text", "")
+                            if delta_text:
+                                print(delta_text, end="", flush=True)
+                                parts.append(delta_text)
+
+                        elif ctype == "response.output_item.added":
+                            item = chunk.get("item", {})
+                            if item.get("type") == "function_call":
+                                cid = item.get("call_id") or item.get("id", "")
+                                cur_call_id = cid
+                                tool_calls[cid] = {"name": item.get("name", ""), "args": []}
+
+                        elif ctype == "response.function_call_arguments.delta":
+                            if cur_call_id and cur_call_id in tool_calls:
+                                tool_calls[cur_call_id]["args"].append(chunk.get("delta", ""))
+
+                        elif ctype == "response.function_call_arguments.done":
+                            if cur_call_id and cur_call_id in tool_calls:
+                                final = chunk.get("arguments")
+                                if final is not None:
+                                    tool_calls[cur_call_id]["args"] = [final]
+                                cur_call_id = None
+
+                        elif chunk.get("choices"):
+                            delta_text = chunk["choices"][0].get("delta", {}).get("content", "") or ""
+                            if delta_text:
+                                print(delta_text, end="", flush=True)
+                                parts.append(delta_text)
+                    except Exception:
+                        continue
+
+        all_parts.extend(parts)
+
+        if not tool_calls:
+            break
+
+        # Execute tools and append results to input for the next round
+        new_items: list[dict] = []
+        for cid, call in tool_calls.items():
+            args_str = "".join(call["args"])
+            new_items.append({
+                "type": "function_call",
+                "call_id": cid,
+                "name": call["name"],
+                "arguments": args_str,
+            })
+            result = execute_tool(call["name"], args_str, ws)
+            new_items.append({
+                "type": "function_call_output",
+                "call_id": cid,
+                "output": result,
+            })
+        input_msgs = input_msgs + new_items
+        print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
+
+    return "".join(all_parts)
 
 
 def _load_codex_indirect_key() -> str | None:
@@ -706,8 +784,10 @@ def _print_help() -> None:
         f"  Env MAHANAI_API_KEY overrides the saved file.\n"
         f"  /models                 Interactive model selector (↑↓ arrow keys)\n"
         f"  /mode claude            Quick-switch to Claude CLI mode\n"
-
         f"  /mode default           Quick-switch back to MahanAI server mode\n"
+        f"  /effort <level>         Set reasoning effort: low, medium, high, very-high\n"
+        f"                          (disabled for Claude Haiku 4.5)\n"
+        f"  /plan on|off            Toggle plan-before-respond mode\n"
         f"  /codex-login            Sign in to OpenAI via browser (Codex Direct)\n"
         f"  /codex-logout           Remove saved OpenAI Codex credentials\n"
         f"  /custom [url [model [key]]]  Configure a custom OpenAI-compatible endpoint\n"
@@ -735,7 +815,12 @@ def main() -> None:
 
     history: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
 
-    active_model_idx = 0  # index into AVAILABLE_MODELS
+    active_model_idx = next(
+        (i for i, m in enumerate(AVAILABLE_MODELS) if m.get("claude_model") == "claude-haiku-4-5-20251001"),
+        0,
+    )
+    current_effort = "medium"
+    plan_mode = False
     print_startup_banner(AVAILABLE_MODELS[active_model_idx]["label"], compact=compact)
     print()
 
@@ -840,6 +925,44 @@ def main() -> None:
                 clear_codex_token()
                 print(f"{C.OK}OpenAI Codex credentials removed.{C.RST}\n")
                 continue
+            if cmd == "/effort":
+                level = rest.strip().lower().replace(" ", "-")
+                if not level:
+                    print(f"{C.DIM}Current effort: {current_effort}{C.RST}\n")
+                    continue
+                valid_efforts = ["low", "medium", "high", "very-high"]
+                if level not in valid_efforts:
+                    print(
+                        f"{C.ERR}Invalid effort level.{C.RST} "
+                        f"Choose: low, medium, high, very-high\n"
+                    )
+                    continue
+                chosen = AVAILABLE_MODELS[active_model_idx]
+                if chosen.get("claude_model") == "claude-haiku-4-5-20251001":
+                    print(
+                        f"{C.ERR}Effort is disabled for Claude Haiku 4.5.{C.RST} "
+                        f"Switch to Opus or Sonnet first.\n"
+                    )
+                    continue
+                if level == "very-high":
+                    print(
+                        f"{C.ERR}⚠ Warning:{C.RST} Very High effort uses the maximum thinking budget "
+                        f"— expect significantly higher token consumption and slower responses.\n"
+                    )
+                current_effort = level
+                print(f"{C.OK}Effort set to: {level}{C.RST}\n")
+                continue
+            if cmd == "/plan":
+                target = rest.strip().lower()
+                if target == "on":
+                    plan_mode = True
+                    print(f"{C.OK}Plan mode ON{C.RST} — MahanAI will outline a plan before every response.\n")
+                elif target == "off":
+                    plan_mode = False
+                    print(f"{C.OK}Plan mode OFF{C.RST}\n")
+                else:
+                    print(f"{C.ERR}Usage:{C.RST} /plan on  or  /plan off\n")
+                continue
             if cmd == "/custom":
                 sub = rest.strip()
                 if sub.lower() == "clear":
@@ -875,13 +998,23 @@ def main() -> None:
             print(f"{C.ERR}Unknown command.{C.RST} Try {C.DIM}/help{C.RST}\n")
             continue
 
-        # Route based on selected model
+        # Apply plan mode and effort modifiers
+        effective_user = user
+        if plan_mode:
+            effective_user = (
+                "Before responding, briefly outline your plan step by step, then execute it.\n\n"
+                + user
+            )
         selected = AVAILABLE_MODELS[active_model_idx]
+        is_haiku = selected.get("claude_model") == "claude-haiku-4-5-20251001"
+        effort_instr = "" if is_haiku else _EFFORT_INSTRUCTIONS.get(current_effort, "")
+        codex_effort = _EFFORT_CODEX.get(current_effort, "medium")
 
+        # Route based on selected model
         if selected["mode"] == "claude":
             claude_model = selected.get("claude_model")
             print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
-            _run_claude_cli(user, model=claude_model)
+            _run_claude_cli(effective_user, model=claude_model, effort_instruction=effort_instr)
             print("\n")
             continue
 
@@ -894,10 +1027,10 @@ def main() -> None:
                 )
                 continue
             codex_access, codex_account_id = creds
-            history.append({"role": "user", "content": user})
+            history.append({"role": "user", "content": effective_user})
             print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
             try:
-                reply = _stream_wham(codex_access, codex_account_id, history, selected["name"])
+                reply = _stream_wham(codex_access, codex_account_id, history, selected["name"], codex_effort, workspace)
             except (httpx.HTTPStatusError, httpx.RequestError) as e:
                 print()
                 print(f"{C.ERR}[Codex Direct error]{C.RST} {e}\n")
@@ -910,10 +1043,10 @@ def main() -> None:
         if selected["mode"] == "codex_indirect":
             indirect_token = _load_codex_indirect_key()
             if indirect_token:
-                history.append({"role": "user", "content": user})
+                history.append({"role": "user", "content": effective_user})
                 print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
                 try:
-                    reply = _stream_wham(indirect_token, None, history, selected["name"])
+                    reply = _stream_wham(indirect_token, None, history, selected["name"], codex_effort, workspace)
                 except (httpx.HTTPStatusError, httpx.RequestError) as e:
                     print()
                     print(f"{C.ERR}[Codex Indirect error]{C.RST} {e}\n")
@@ -923,7 +1056,7 @@ def main() -> None:
                 history.append({"role": "assistant", "content": reply})
             else:
                 print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
-                _run_codex_cli(user, model=selected["name"])
+                _run_codex_cli(effective_user, model=selected["name"])
                 print("\n")
             continue
 
@@ -934,7 +1067,7 @@ def main() -> None:
                     f"{C.ERR}No custom endpoint configured.{C.RST} Use {C.OK}/custom{C.RST} to set one.\n"
                 )
                 continue
-            history.append({"role": "user", "content": user})
+            history.append({"role": "user", "content": effective_user})
             print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
             try:
                 reply = run_turn(
@@ -973,7 +1106,7 @@ def main() -> None:
             active_base_url = NVIDIA_BASE_URL
             active_model = model
 
-        history.append({"role": "user", "content": user})
+        history.append({"role": "user", "content": effective_user})
         print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
         try:
             reply = run_turn(client, active_key, active_model, history, workspace, active_base_url)
