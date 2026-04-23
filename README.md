@@ -15,20 +15,186 @@ mahanai
 
 | Flag | Description |
 |---|---|
-| `--compact` | Compact mode: renders a small **MAI** ASCII logo and a trimmed header (no streaming hint, no `/api-key` reminder) |
+| `--compact` | Compact mode: renders a small **MAI** ASCII logo and a trimmed header |
+| `--server` | Start the gateway server instead of the chat loop |
+| `--port PORT` | Gateway server port (default: `8080`) |
+| `--type TYPE` | Gateway API type: `openai` (default) or `anthropic` |
+| `--api-key KEY` | API key clients must send to the gateway; also used as the Anthropic backend key |
 
 ```bash
 mahanai --compact
+mahanai --server --port 8080 --type openai --api-key my-secret
 ```
 
-Compact banner looks like:
+## Gateway Server
+
+`--server` starts a local HTTP gateway that exposes **all configured providers** behind a single endpoint. Any tool that speaks the OpenAI or Anthropic wire format (Cursor, Continue, LM Studio, Claude Code, etc.) can point at it.
+
+### Starting the server
+
+```bash
+# OpenAI-compatible gateway on port 8080 (default)
+mahanai --server
+
+# Custom port
+mahanai --server --port 9000
+
+# Anthropic-compatible gateway
+mahanai --server --type anthropic
+
+# With an API key (clients must send Authorization: Bearer <key>)
+mahanai --server --port 4343 --api-key sk-gaming
+
+# Anthropic gateway with your Anthropic API key
+mahanai --server --type anthropic --api-key sk-ant-...
+```
+
+### Endpoints
+
+| Server type | Endpoint | Purpose |
+|---|---|---|
+| `openai` | `POST /v1/chat/completions` | Chat completions |
+| `anthropic` | `POST /v1/messages` | Messages API |
+| both | `GET /v1/models` | List all available models |
+
+### Model routing
+
+The gateway automatically routes requests to the right backend based on the `model` field in the request:
+
+| Model ID | Provider | Credentials needed |
+|---|---|---|
+| `mahanai/mahanai` | NVIDIA NIM (server) | `/api-key` |
+| `meta/llama-3.3-70b-instruct` | NVIDIA NIM (direct) | `/api-key-nvidia` |
+| `claude-opus-4-7` | Anthropic | `--api-key sk-ant-...` |
+| `claude-sonnet-4-6` | Anthropic | `--api-key sk-ant-...` |
+| `claude-haiku-4-5-20251001` | Anthropic | `--api-key sk-ant-...` |
+| `gpt-5.4`, `gpt-5.2`, `gpt-5.2-codex` … | OpenAI Codex | `/codex-login` |
+| custom model ID | Custom endpoint | `/custom` |
+
+### Format conversion
+
+Requests are automatically converted between formats:
+
+- **OpenAI gateway + Claude model** → converts OpenAI→Anthropic, calls Anthropic API, converts response back
+- **Anthropic gateway + NVIDIA/Codex model** → converts Anthropic→OpenAI, calls backend, converts response back
+- **Same-format routes** (OpenAI gateway + NVIDIA/Codex) → transparent proxy, no conversion overhead
+
+Streaming SSE is preserved end-to-end for all routes.
+
+### Authentication
+
+If `--api-key` is supplied, the server validates every incoming request:
 
 ```
-===================================
-  Super 2.0  |  <Model>  |
-  /help  /exit  /quit
-===================================
+Authorization: Bearer <your-key>
 ```
+
+Requests with a missing or wrong key receive HTTP 401. Omit `--api-key` to run with open access (local use only).
+
+### Example curl
+
+```bash
+curl http://localhost:4343/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-gaming" \
+  -d '{
+    "model": "gpt-5.2",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user",   "content": "Hello!"}
+    ]
+  }'
+```
+
+---
+
+## Themes
+
+MahanAI supports four terminal color themes, including two designed for colorblind accessibility.
+
+| Theme | Description |
+|---|---|
+| `midnight` | Dark terminal — purple→cyan gradient banner (default) |
+| `light` | Light terminal — navy→teal gradient banner |
+| `midnight-cb` | Dark + colorblind-friendly — blue replaces green, yellow replaces red |
+| `light-cb` | Light + colorblind-friendly |
+
+```
+/themes                   # list all themes
+/themes midnight
+/themes light
+/themes midnight-cb
+/themes light-cb
+```
+
+Themes persist across sessions (saved to `config.json`). The banner gradient, prompt colors, and status colors all update when you switch.
+
+---
+
+## Command Approvals
+
+Every tool action MahanAI takes on your behalf requires explicit approval before it runs. The prompt style depends on the action type:
+
+### Shell commands
+
+```
+  Shell Command
+  npm install react
+
+  [A] Allow    [W] Always Allow (npm)    [D] Deny
+  >
+```
+
+### Git commands
+
+```
+  Git Command
+  git push origin main
+
+  [A] Allow    [D] Deny
+  >
+```
+
+### GitHub CLI commands
+
+```
+  GitHub Command
+  gh pr create --title "..."
+
+  [A] Allow    [D] Deny
+  >
+```
+
+### File operations
+
+```
+  Write / Create File
+  C:\Users\Mahan\project\main.py
+
+  [A] Allow    [W] Always Allow (Write / Create File)    [D] Deny
+  >
+```
+
+### Approval options
+
+| Key | Effect |
+|---|---|
+| `A` | Allow once |
+| `W` | Always Allow — stored in `config.json`, never asked again for that command prefix or file op |
+| `D` | Deny — optionally type an instruction the AI will receive as the tool result |
+
+**Always Allow** is available for shell commands (stored by command prefix, e.g. `npm`) and file operations (stored by operation type). It is **not** available for git or GitHub commands — those always prompt.
+
+**Destructive commands** (`rm -rf`, `format`, `shutdown`, etc.) are flagged `[DESTRUCTIVE]` and Always Allow is disabled for them regardless.
+
+### Managing stored rules
+
+```
+/approvals          # list all Always Allow rules
+/approvals clear    # remove all Always Allow rules
+```
+
+---
 
 ## Models
 
@@ -78,6 +244,8 @@ Point MahanAI at any OpenAI-compatible API (Ollama, LM Studio, vLLM, OpenRouter,
 
 Once saved, select **Custom Endpoint** from `/models` to start using it. The config persists across sessions.
 
+---
+
 ## Commands
 
 | Command | Description |
@@ -88,6 +256,10 @@ Once saved, select **Custom Endpoint** from `/models` to start using it. The con
 | `/effort <level>` | Set reasoning effort: `low`, `medium`, `high`, `very-high` |
 | `/plan on` | Enable plan mode — MahanAI outlines a plan before every response |
 | `/plan off` | Disable plan mode |
+| `/themes` | List available color themes |
+| `/themes <name>` | Switch theme: `midnight`, `light`, `midnight-cb`, `light-cb` |
+| `/approvals` | Show stored Always Allow rules |
+| `/approvals clear` | Remove all Always Allow rules |
 | `/api-key [key]` | Save server API key (omit key for hidden prompt) |
 | `/api-key clear` | Remove saved server key |
 | `/api-key-nvidia [key]` | Save NVIDIA direct API key |
@@ -99,9 +271,11 @@ Once saved, select **Custom Endpoint** from `/models` to start using it. The con
 | `/help` | Show help |
 | `/exit` or `/quit` | Leave |
 
+---
+
 ## Effort Levels
 
-`/effort` controls how much reasoning the model applies before responding. This affects response depth, quality, and token usage.
+`/effort` controls how much reasoning the model applies before responding.
 
 | Level | Effect |
 |---|---|
@@ -130,6 +304,8 @@ Plan mode instructs MahanAI to outline its approach before taking action on ever
 ```
 
 Plan mode works across all model backends.
+
+---
 
 ## API Keys
 
@@ -200,11 +376,13 @@ Examples:
 - `model` — model ID to send in requests (defaults to `gpt-3.5-turbo` if omitted)
 - `api-key` — leave blank if the server doesn't require one
 
-After saving, run `/models` and select **Custom Endpoint**, or the agent will remind you to switch if you haven't already. To remove the config:
+After saving, run `/models` and select **Custom Endpoint**. To remove:
 
 ```
 /custom clear
 ```
+
+---
 
 ## Environment Variables
 
@@ -216,15 +394,21 @@ After saving, run `/models` and select **Custom Endpoint**, or the agent will re
 | `MAHANAI_CONFIG_DIR` | Override config file directory |
 | `NO_COLOR` | Disable terminal colors |
 
+---
+
 ## Tools
 
-MahanAI can execute tools on your behalf:
+Every tool action is shown to you for approval before it runs (see [Command Approvals](#command-approvals) above).
 
-- **run_command** — run shell commands (asks confirmation before destructive ops)
-- **read_file** — read a file
-- **write_file** — write a file
-- **append_file** — append to a file
-- **list_directory** — list directory contents
+| Tool | Description |
+|---|---|
+| `run_command` | Run a shell command |
+| `read_file` | Read a file |
+| `write_file` | Create or overwrite a file |
+| `append_file` | Append to a file |
+| `list_directory` | List directory contents |
+
+---
 
 ## Develop
 

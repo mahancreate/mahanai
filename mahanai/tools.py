@@ -11,7 +11,6 @@ from typing import Any
 
 from mahanai import colors as C
 
-# Backslashes in model-generated JSON often break parsing (e.g. C:\Users — invalid \U escape).
 _JSON_BAD_BACKSLASH = re.compile(r'\\(?!["\\/bfnrtu]|u[0-9a-fA-F]{4})')
 
 
@@ -42,6 +41,7 @@ def normalize_tool_arguments_json(arguments: str) -> str:
     if not isinstance(obj, dict):
         return "{}"
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -146,59 +146,149 @@ TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+# ── Approval helpers ───────────────────────────────────────────────────────────
 
-def _high_risk_shell_command(cmd: str) -> bool:
-    """Heuristic: recursive delete, disk/system shutdown, etc."""
+_HIGH_RISK_PATTERNS = [
+    re.compile(r"\brm\s+.*(-\s*rf\b|-\s*fr\b|--no-preserve-root)"),
+    re.compile(r"\brmdir(\.exe)?\b.*\s/s\b"),
+    re.compile(r"\brd(\.exe)?\b.*\s/s\b"),
+    re.compile(r"\bdel(\.exe)?\b.*\s/s\b"),
+    re.compile(r"\berase(\.exe)?\b.*\s/s\b"),
+    re.compile(r"\bformat\s+"),
+    re.compile(r"\bshutdown\b"),
+    re.compile(r"\breboot\b"),
+    re.compile(r"\blogoff\b"),
+    re.compile(r"\bhalt\b"),
+    re.compile(r"\bpoweroff\b"),
+    re.compile(r"\binit\s+0\b"),
+    re.compile(r"\bdiskpart\b"),
+    re.compile(r"\bmkfs"),
+    re.compile(r"\bdd\s+if="),
+    re.compile(r":\(\)\s*\{\s*:"),
+    re.compile(r"remove-item.*-recurse.*-force"),
+]
+
+
+def _is_high_risk(cmd: str) -> bool:
     low = cmd.strip().lower()
-    if not low:
-        return False
-    if re.search(r"\brm\s+.*(-\s*rf\b|-\s*fr\b|--no-preserve-root)", low):
-        return True
-    if re.search(r"\brmdir(\.exe)?\b.*\s/s\b", low):
-        return True
-    if re.search(r"\brd(\.exe)?\b.*\s/s\b", low):
-        return True
-    if re.search(r"\bdel(\.exe)?\b.*\s/s\b", low):
-        return True
-    if re.search(r"\berase(\.exe)?\b.*\s/s\b", low):
-        return True
-    if re.search(r"\bformat\s+", low):
-        return True
-    if re.search(r"\bshutdown\b", low):
-        return True
-    if re.search(r"\breboot\b", low):
-        return True
-    if re.search(r"\blogoff\b", low):
-        return True
-    if re.search(r"\bhalt\b", low):
-        return True
-    if re.search(r"\bpoweroff\b", low):
-        return True
-    if re.search(r"\binit\s+0\b", low):
-        return True
-    if re.search(r"\bdiskpart\b", low):
-        return True
-    if re.search(r"\bmkfs", low):
-        return True
-    if re.search(r"\bdd\s+if=", low):
-        return True
-    if re.search(r":\(\)\s*\{\s*:", low):
-        return True
-    if "remove-item" in low and "-recurse" in low and "-force" in low:
-        return True
-    return False
+    return any(p.search(low) for p in _HIGH_RISK_PATTERNS)
 
 
-def _confirm_high_risk_command(cmd: str) -> bool:
-    print(f"\n{C.WARN}High-risk command — approval required{C.RST}")
-    print(f"{C.DIM}  {cmd}{C.RST}")
+def _command_category(cmd: str) -> str:
+    first = cmd.strip().split()[0].lower().rstrip(".exe") if cmd.strip() else ""
+    if first == "git":
+        return "git"
+    if first == "gh":
+        return "github"
+    return "normal"
+
+
+def _command_prefix(cmd: str) -> str:
+    return cmd.strip().split()[0].lower() if cmd.strip() else ""
+
+
+def _read_input(prompt: str) -> str:
     try:
-        ans = input("Allow? [y/N]: ").strip().lower()
+        return input(prompt).strip()
     except (EOFError, KeyboardInterrupt):
         print()
-        return False
-    return ans in ("y", "yes")
+        return ""
 
+
+def _approve_command(cmd: str) -> tuple[bool, str]:
+    """
+    Show an approval prompt for a shell command.
+    Returns (approved, denial_message_for_ai).
+    """
+    from mahanai.config import load_always_allowed, add_always_allowed_command
+
+    category = _command_category(cmd)
+    prefix = _command_prefix(cmd)
+    high_risk = _is_high_risk(cmd)
+
+    # Always-Allow only applies to normal (non-git, non-gh) commands
+    if category == "normal" and not high_risk:
+        always = load_always_allowed()
+        if prefix in always.get("command_prefixes", []):
+            return True, ""
+
+    # ── Build prompt ──────────────────────────────────────────────────────────
+    cat_label = {
+        "git":    "Git Command",
+        "github": "GitHub Command",
+        "normal": "Shell Command",
+    }[category]
+
+    risk_tag = f"  {C.ERR}[DESTRUCTIVE]{C.RST}" if high_risk else ""
+    print(f"\n{C.WARN}  {cat_label}{C.RST}{risk_tag}")
+    print(f"  {C.DIM}{cmd}{C.RST}")
+
+    if category in ("git", "github"):
+        print(f"  {C.OK}[A]{C.RST} Allow    {C.ERR}[D]{C.RST} Deny")
+        ans = _read_input("  > ")
+        approved = ans.lower() in ("a", "allow")
+    else:
+        # Normal: Allow / Always Allow / Deny
+        always_label = f"Always Allow ({prefix})" if not high_risk else "Always Allow (disabled for destructive)"
+        if high_risk:
+            print(f"  {C.OK}[A]{C.RST} Allow    {C.ERR}[D]{C.RST} Deny")
+            ans = _read_input("  > ")
+            approved = ans.lower() in ("a", "allow")
+        else:
+            print(f"  {C.OK}[A]{C.RST} Allow    {C.DIM}[W] {always_label}{C.RST}    {C.ERR}[D]{C.RST} Deny")
+            ans = _read_input("  > ").lower()
+            if ans in ("w", "always allow", "always"):
+                add_always_allowed_command(prefix)
+                print(f"  {C.OK}'{prefix}' commands will always be allowed.{C.RST}")
+                return True, ""
+            approved = ans in ("a", "allow")
+
+    if approved:
+        return True, ""
+
+    # Denied — let user send a message to the AI
+    msg = _read_input(f"  {C.DIM}Instruction for AI (Enter to skip):{C.RST} ")
+    return False, msg or "Command was denied by the user."
+
+
+def _approve_file_op(op: str, display_path: str) -> tuple[bool, str]:
+    """
+    Show an approval prompt for a file operation.
+    Returns (approved, denial_message_for_ai).
+    """
+    from mahanai.config import load_always_allowed, add_always_allowed_file_op
+
+    always = load_always_allowed()
+    if op in always.get("file_ops", []):
+        return True, ""
+
+    op_labels = {
+        "read_file":      "Read File",
+        "write_file":     "Write / Create File",
+        "append_file":    "Append to File",
+        "list_directory": "List Directory",
+    }
+    label = op_labels.get(op, op)
+
+    print(f"\n{C.WARN}  {label}{C.RST}")
+    print(f"  {C.DIM}{display_path}{C.RST}")
+    print(f"  {C.OK}[A]{C.RST} Allow    {C.DIM}[W] Always Allow ({label}){C.RST}    {C.ERR}[D]{C.RST} Deny")
+
+    ans = _read_input("  > ").lower()
+
+    if ans in ("w", "always allow", "always"):
+        add_always_allowed_file_op(op)
+        print(f"  {C.OK}'{label}' will always be allowed.{C.RST}")
+        return True, ""
+
+    if ans in ("a", "allow"):
+        return True, ""
+
+    msg = _read_input(f"  {C.DIM}Instruction for AI (Enter to skip):{C.RST} ")
+    return False, msg or "File operation was denied by the user."
+
+
+# ── Tool implementations ───────────────────────────────────────────────────────
 
 def _resolve_path(base: Path, raw: str) -> Path:
     p = Path(raw).expanduser()
@@ -209,9 +299,7 @@ def _resolve_path(base: Path, raw: str) -> Path:
     return p
 
 
-def run_command(
-    base: Path, args: dict[str, object]
-) -> str:
+def run_command(base: Path, args: dict[str, object]) -> str:
     cmd = str(args.get("command", "")).strip()
     if not cmd:
         return json.dumps({"error": "empty command"})
@@ -221,20 +309,18 @@ def run_command(
     if isinstance(cwd_raw, str) and cwd_raw.strip():
         cwd = _resolve_path(base, cwd_raw)
 
-    if _high_risk_shell_command(cmd):
-        if not _confirm_high_risk_command(cmd):
-            return json.dumps(
-                {
-                    "exit_code": -1,
-                    "error": "user_denied_high_risk_command",
-                    "command": cmd,
-                    "output": "",
-                    "cwd": str(cwd),
-                }
-            )
+    approved, denial_msg = _approve_command(cmd)
+    if not approved:
+        return json.dumps({
+            "exit_code": -1,
+            "error": "user_denied",
+            "message": denial_msg,
+            "command": cmd,
+            "output": denial_msg,
+            "cwd": str(cwd),
+        })
 
     print(f"\n{C.OK}⚡Running:{C.RST} {cmd}", flush=True)
-
     try:
         proc = subprocess.run(
             cmd,
@@ -248,13 +334,7 @@ def run_command(
         out = (proc.stdout or "") + (proc.stderr or "")
         if len(out) > 100_000:
             out = out[:100_000] + "\n… [truncated]"
-        return json.dumps(
-            {
-                "exit_code": proc.returncode,
-                "output": out,
-                "cwd": str(cwd),
-            }
-        )
+        return json.dumps({"exit_code": proc.returncode, "output": out, "cwd": str(cwd)})
     except subprocess.TimeoutExpired:
         return json.dumps({"error": f"timed out after {timeout}s", "command": cmd})
     except OSError as e:
@@ -262,7 +342,13 @@ def run_command(
 
 
 def read_file(base: Path, args: dict[str, object]) -> str:
-    path = _resolve_path(base, str(args.get("path", "")))
+    raw_path = str(args.get("path", ""))
+    path = _resolve_path(base, raw_path)
+
+    approved, denial_msg = _approve_file_op("read_file", str(path))
+    if not approved:
+        return json.dumps({"error": "user_denied", "message": denial_msg, "path": str(path)})
+
     if not path.is_file():
         return json.dumps({"error": "not a file", "path": str(path)})
     try:
@@ -275,8 +361,14 @@ def read_file(base: Path, args: dict[str, object]) -> str:
 
 
 def write_file(base: Path, args: dict[str, object]) -> str:
-    path = _resolve_path(base, str(args.get("path", "")))
+    raw_path = str(args.get("path", ""))
+    path = _resolve_path(base, raw_path)
     content = str(args.get("content", ""))
+
+    approved, denial_msg = _approve_file_op("write_file", str(path))
+    if not approved:
+        return json.dumps({"error": "user_denied", "message": denial_msg, "path": str(path)})
+
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
@@ -286,8 +378,14 @@ def write_file(base: Path, args: dict[str, object]) -> str:
 
 
 def append_file(base: Path, args: dict[str, object]) -> str:
-    path = _resolve_path(base, str(args.get("path", "")))
+    raw_path = str(args.get("path", ""))
+    path = _resolve_path(base, raw_path)
     content = str(args.get("content", ""))
+
+    approved, denial_msg = _approve_file_op("append_file", str(path))
+    if not approved:
+        return json.dumps({"error": "user_denied", "message": denial_msg, "path": str(path)})
+
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
@@ -300,6 +398,11 @@ def append_file(base: Path, args: dict[str, object]) -> str:
 def list_directory(base: Path, args: dict[str, object]) -> str:
     raw = args.get("path")
     path = base if not isinstance(raw, str) or not raw.strip() else _resolve_path(base, raw)
+
+    approved, denial_msg = _approve_file_op("list_directory", str(path))
+    if not approved:
+        return json.dumps({"error": "user_denied", "message": denial_msg, "path": str(path)})
+
     if not path.is_dir():
         return json.dumps({"error": "not a directory", "path": str(path)})
     try:

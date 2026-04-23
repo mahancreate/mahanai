@@ -28,14 +28,17 @@ from mahanai.config import (
     clear_nvidia_api_key,
     clear_saved_api_key,
     config_file_path,
+    load_always_allowed,
     load_codex_token,
     load_custom_endpoint,
     load_nvidia_api_key,
+    load_theme,
     resolve_api_key,
     save_api_key,
     save_codex_token,
     save_custom_endpoint,
     save_nvidia_api_key,
+    save_theme,
 )
 from mahanai.system_info import describe_runtime
 from mahanai.tools import TOOLS, execute_tool, normalize_tool_arguments_json
@@ -96,12 +99,7 @@ def _gradient_line(text, colors):
 
 
 def print_startup_banner(model_label: str = "MahanAI Super", compact: bool = False):
-    colors = [
-        "#7c3aed", "#6d28d9", "#5b21b6",
-        "#4338ca", "#3730a3",
-        "#2563eb", "#1d4ed8",
-        "#0284c7", "#06b6d4", "#22d3ee"
-    ]
+    colors = C.banner_colors
     if compact:
         mai_banner = [
             "███╗   ███╗ █████╗ ██╗",
@@ -788,6 +786,11 @@ def _print_help() -> None:
         f"  /effort <level>         Set reasoning effort: low, medium, high, very-high\n"
         f"                          (disabled for Claude Haiku 4.5)\n"
         f"  /plan on|off            Toggle plan-before-respond mode\n"
+        f"  /themes                 List available themes\n"
+        f"  /themes <name>          Switch theme: midnight, light,\n"
+        f"                            midnight-cb, light-cb\n"
+        f"  /approvals              Show stored Always Allow rules\n"
+        f"  /approvals clear        Remove all Always Allow rules\n"
         f"  /codex-login            Sign in to OpenAI via browser (Codex Direct)\n"
         f"  /codex-logout           Remove saved OpenAI Codex credentials\n"
         f"  /custom [url [model [key]]]  Configure a custom OpenAI-compatible endpoint\n"
@@ -799,12 +802,34 @@ def _print_help() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(prog="mahanai", add_help=False)
     parser.add_argument("--compact", action="store_true", help="Compact mode: smaller MAI banner and shorter header")
+    parser.add_argument("--server",  action="store_true", help="Start the gateway server instead of the chat loop")
+    parser.add_argument("--port",    type=int, default=8080, metavar="PORT", help="Gateway server port (default: 8080)")
+    parser.add_argument("--type",    default="openai", choices=["openai", "anthropic"], metavar="TYPE",
+                        help="Gateway API type: openai (default) or anthropic")
+    parser.add_argument("--api-key", dest="cli_api_key", default=None, metavar="KEY",
+                        help="API key for Anthropic or the MahanAI server (overrides saved key)")
     args, _ = parser.parse_known_args()
     compact = args.compact
 
     workspace = Path.cwd()
     api_key = resolve_api_key()
     nvidia_api_key = load_nvidia_api_key()
+
+    # ── Server mode ───────────────────────────────────────────────────────────
+    if args.server:
+        from mahanai.server import ServerConfig, run_server
+        C.apply_theme(load_theme())
+        run_server(ServerConfig(
+            server_type      = args.type,
+            port             = args.port,
+            gateway_key      = args.cli_api_key,   # clients must present this key (None = open)
+            api_key          = api_key,            # NVIDIA server backend key
+            anthropic_key    = args.cli_api_key,   # Anthropic backend key (pass via --api-key)
+            nvidia_api_key   = nvidia_api_key,
+            codex_token      = load_codex_token(),
+            custom_endpoint  = load_custom_endpoint(),
+        ))
+        return
 
     # OpenAI client kept for future tool-call support; direct httpx used for actual requests.
     client: OpenAI | None = (
@@ -821,6 +846,7 @@ def main() -> None:
     )
     current_effort = "medium"
     plan_mode = False
+    C.apply_theme(load_theme())
     print_startup_banner(AVAILABLE_MODELS[active_model_idx]["label"], compact=compact)
     print()
 
@@ -962,6 +988,55 @@ def main() -> None:
                     print(f"{C.OK}Plan mode OFF{C.RST}\n")
                 else:
                     print(f"{C.ERR}Usage:{C.RST} /plan on  or  /plan off\n")
+                continue
+            if cmd == "/approvals":
+                sub = rest.strip().lower()
+                if sub == "clear":
+                    from mahanai.config import _read_config, _write_config
+                    data = _read_config()
+                    data.pop("always_allowed", None)
+                    _write_config(data)
+                    print(f"{C.OK}All Always Allow rules cleared.{C.RST}\n")
+                else:
+                    aa = load_always_allowed()
+                    prefixes = aa.get("command_prefixes", [])
+                    file_ops = aa.get("file_ops", [])
+                    if not prefixes and not file_ops:
+                        print(f"{C.DIM}No Always Allow rules stored yet.{C.RST}\n")
+                    else:
+                        print(f"{C.DIM}Always Allow rules:{C.RST}")
+                        if prefixes:
+                            print(f"  Commands:   {', '.join(prefixes)}")
+                        if file_ops:
+                            print(f"  File ops:   {', '.join(file_ops)}")
+                        print()
+                continue
+            if cmd == "/themes":
+                sub = rest.strip().lower().replace(" ", "-")
+                # Normalise long display names to slugs
+                _alias = {
+                    "midnight-colorblind-friendly": "midnight-cb",
+                    "light-colorblind-friendly":    "light-cb",
+                    "midnight-colorblind":          "midnight-cb",
+                    "light-colorblind":             "light-cb",
+                }
+                sub = _alias.get(sub, sub)
+                if not sub:
+                    print(f"{C.DIM}Available themes:{C.RST}")
+                    for slug, display in C.THEME_DISPLAY.items():
+                        print(f"  {C.OK}{slug:<16}{C.RST}  {display}")
+                    print()
+                elif sub not in C.THEME_NAMES:
+                    print(
+                        f"{C.ERR}Unknown theme '{sub}'.{C.RST} "
+                        f"Available: {', '.join(C.THEME_NAMES)}\n"
+                    )
+                else:
+                    C.apply_theme(sub)
+                    save_theme(sub)
+                    print_startup_banner(AVAILABLE_MODELS[active_model_idx]["label"], compact=compact)
+                    print()
+                    print(f"{C.OK}Theme set to:{C.RST} {C.THEME_DISPLAY[sub]}\n")
                 continue
             if cmd == "/custom":
                 sub = rest.strip()

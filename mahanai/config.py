@@ -156,3 +156,35 @@ def clear_custom_endpoint() -> None:
             path.unlink()
         except OSError:
             pass
+
+
+def load_theme() -> str:
+    return (_read_config().get("theme") or "midnight")
+
+
+def save_theme(theme: str) -> None:
+    data = _read_config()
+    data["theme"] = theme
+    _write_config(data)
+
+
+def load_always_allowed() -> dict:
+    return _read_config().get("always_allowed", {})
+
+
+def add_always_allowed_command(prefix: str) -> None:
+    data = _read_config()
+    aa = data.setdefault("always_allowed", {})
+    prefixes: list = aa.setdefault("command_prefixes", [])
+    if prefix not in prefixes:
+        prefixes.append(prefix)
+    _write_config(data)
+
+
+def add_always_allowed_file_op(op: str) -> None:
+    data = _read_config()
+    aa = data.setdefault("always_allowed", {})
+    ops: list = aa.setdefault("file_ops", [])
+    if op not in ops:
+        ops.append(op)
+    _write_config(data)
