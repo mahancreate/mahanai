@@ -1,15 +1,1116 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MahanAI Super — Documentation</title>
-    <meta name="description" content="MahanAI Super: Terminal AI agent with multi-model support, streaming chat, built-in tools, and Claude CLI mode." />
-    <script type="module" crossorigin src="index-CTPPWBX_.js"></script>
-    <link rel="stylesheet" crossorigin href="index-CgAkdmJA.css">
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MahanAI — the perfect coding agent</title>
+<link rel="icon" href="assets/mahan-mark.png">
+<link rel="stylesheet" href="colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  /* ── Base ─────────────────────────────────────────────── */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background:
+      radial-gradient(ellipse 900px 600px at 20% 0%, rgba(37,99,235,.18), transparent 55%),
+      radial-gradient(ellipse 700px 500px at 85% 10%, rgba(124,58,237,.12), transparent 60%),
+      #07080C;
+    color: var(--fg-1);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  ::selection { background: color-mix(in oklab, var(--brand-blue-bright) 55%, transparent); }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+
+  /* ── Nav ──────────────────────────────────────────────── */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    background: rgba(11,13,19,0.55);
+    border-bottom: 1px solid var(--border-1);
+  }
+  .nav-inner {
+    display: flex; align-items: center; gap: 24px;
+    height: 60px;
+  }
+  .nav-logo { display:flex; align-items:center; gap: 10px; }
+  .nav-logo img { height: 26px; width: auto; display:block; }
+  .nav-logo b { font-weight: 600; letter-spacing: -0.01em; font-size: 16px; }
+  .nav-links { display: flex; gap: 22px; margin-left: 12px; }
+  .nav-links a {
+    font-size: 14px; color: var(--fg-2);
+    transition: color var(--dur-fast) var(--ease-std);
+  }
+  .nav-links a:hover { color: var(--fg-1); }
+  .nav-spacer { flex: 1; }
+  .nav-cta {
+    font-family: var(--font-mono); font-size: 12.5px;
+    color: var(--fg-2);
+    padding: 7px 12px; border: 1px solid var(--border-2);
+    border-radius: 6px;
+    transition: all var(--dur-fast) var(--ease-std);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .nav-cta:hover { color: var(--fg-1); background: var(--bg-3); }
+  .nav-cta .star { color: var(--brand-yellow); }
+
+  /* ── Hero ─────────────────────────────────────────────── */
+  .hero { padding: 96px 0 72px; position: relative; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 6px 12px 6px 6px;
+    border: 1px solid var(--border-2);
+    background: rgba(26,29,40,.55);
+    border-radius: 999px;
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--fg-2);
+    margin-bottom: 32px;
+  }
+  .pill .tag {
+    background: linear-gradient(90deg,#7C3AED,#2563EB,#22D3EE);
+    color: #fff; font-weight: 600;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11px; letter-spacing: .02em;
+  }
+  .pill .arr { opacity: .6; }
+
+  .headline {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: clamp(52px, 8.2vw, 112px);
+    line-height: 0.94;
+    letter-spacing: -0.035em;
+    margin: 0 0 28px;
+    text-wrap: balance;
+  }
+  .headline .grad {
+    background: linear-gradient(90deg,#7C3AED 0%,#6D28D9 14%,#4338CA 32%,#2563EB 52%,#0284C7 72%,#06B6D4 86%,#22D3EE 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: sweep 7s linear infinite;
+    font-style: italic;
+    font-weight: 600;
+  }
+  @keyframes sweep {
+    0%   { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+  }
+
+  .sub {
+    max-width: 620px;
+    font-size: 20px; line-height: 1.5;
+    color: var(--fg-2);
+    margin: 0 0 40px;
+    text-wrap: pretty;
+  }
+  .sub code {
+    font: var(--t-code-inline);
+    color: var(--fg-1);
+    background: var(--bg-3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-1);
+  }
+
+  .hero-cta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    font-family: var(--font-sans);
+    font-size: 15px; font-weight: 500;
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 10px;
+    transition: all var(--dur-fast) var(--ease-std);
+    text-decoration: none;
+  }
+  .btn.primary {
+    background: #2563EB; color: #fff;
+    box-shadow: 0 0 0 1px rgba(37,99,235,.35), 0 6px 20px rgba(37,99,235,.3);
+  }
+  .btn.primary:hover { background: #1D4ED8; transform: translateY(-1px); }
+  .btn.primary:active { transform: translateY(1px); background: #1E40AF; }
+  .btn.ghost {
+    background: transparent; color: var(--fg-1);
+    border-color: var(--border-2);
+  }
+  .btn.ghost:hover { background: var(--bg-3); border-color: var(--border-3); }
+
+  .install-row {
+    margin-top: 48px;
+    display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap;
+    max-width: 680px;
+  }
+  .install-box {
+    flex: 1 1 360px;
+    display: flex; align-items: center; gap: 14px;
+    background: #0B0D13;
+    border: 1px solid var(--border-1);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    box-shadow: var(--shadow-inset);
+  }
+  .install-box .dollar { color: var(--sem-bot); font-weight: 700; user-select: none; }
+  .install-box .cmd { color: var(--fg-1); flex: 1; }
+  .install-box .copy {
+    background: transparent; border: 1px solid var(--border-2);
+    color: var(--fg-3); cursor: pointer;
+    padding: 5px 8px; border-radius: 5px; font-size: 11px;
+    font-family: var(--font-mono); letter-spacing: .04em;
+    transition: all var(--dur-fast) var(--ease-std);
+    text-transform: uppercase;
+  }
+  .install-box .copy:hover { color: var(--fg-1); border-color: var(--border-3); }
+  .install-box .copy.ok { color: var(--sem-ok); border-color: rgba(34,197,94,.4); }
+
+  .hero-stats {
+    margin-top: 56px;
+    display: flex; gap: 48px; flex-wrap: wrap;
+    padding-top: 32px;
+    border-top: 1px solid var(--border-1);
+  }
+  .stat .num {
+    font-family: var(--font-display); font-weight: 600;
+    font-size: 36px; line-height: 1; letter-spacing: -0.02em;
+    color: var(--fg-1);
+  }
+  .stat .lbl {
+    margin-top: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--fg-3);
+  }
+
+  /* ── Terminal preview ─────────────────────────────────── */
+  .term-section { padding: 56px 0 96px; }
+  .term-wrap {
+    background: #07080C;
+    border: 1px solid var(--border-1);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+  }
+  .tb {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    background: #0B0D13;
+    border-bottom: 1px solid var(--border-1);
+  }
+  .tb-dots { display:flex; gap:7px; }
+  .tb-dot { width:12px; height:12px; border-radius:50%; }
+  .tb-dot.r{background:#FF5F56;} .tb-dot.y{background:#FFBD2E;} .tb-dot.g{background:#27C93F;}
+  .tb-title { font-family: var(--font-mono); font-size: 12px; color: var(--fg-3); margin: 0 auto; }
+  .tb-tag { font-size: 10px; font-family: var(--font-mono); color: var(--fg-3); padding: 2px 8px; border:1px solid var(--border-1); border-radius: 4px; }
+
+  .term-body {
+    padding: 22px 26px 26px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--fg-1);
+    min-height: 460px;
+  }
+  .rule { color: var(--fg-3); font-family: var(--font-mono); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+  .banner {
+    font-family: ui-monospace, 'Menlo', 'Consolas', monospace;
+    font-size: 14px; line-height: 1.15;
+    white-space: pre;
+    font-weight: 700;
+    margin: 10px 0;
+    background-image: linear-gradient(90deg,#7C3AED 0%,#6D28D9 12%,#5B21B6 22%,#4338CA 34%,#3730A3 46%,#2563EB 58%,#1D4ED8 70%,#0284C7 82%,#06B6D4 92%,#22D3EE 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .term-meta { margin-top: 8px; }
+  .term-meta b { font-weight: 700; }
+  .cmd-line { color: var(--sem-user); }
+  .dim { color: var(--fg-3); }
+  .ok { color: var(--sem-ok); }
+  .warn { color: var(--sem-warn); }
+  .err { color: var(--sem-err); }
+
+  .line { white-space: pre-wrap; }
+  .user-p { color: var(--sem-user); font-weight: 700; }
+  .bot-p  { color: var(--sem-bot);  font-weight: 700; }
+  .caret {
+    display: inline-block; width: 7px; height: 14px;
+    background: var(--sem-user); vertical-align: -2px; margin-left: 2px;
+    animation: blink 1.1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .approval {
+    margin: 10px 0;
+    padding: 12px 14px;
+    border-left: 3px solid var(--sem-warn);
+    background: rgba(250,204,21,.05);
+    border-radius: 0 6px 6px 0;
+  }
+  .approval-title { font-weight: 600; }
+  .approval-cmd { margin: 8px 0 10px; padding: 8px 12px; background:#12141D; border-radius: 4px; color: var(--sem-warn); }
+  .opts { display: flex; gap: 10px; flex-wrap: wrap; }
+  .opt {
+    background: transparent; color: var(--fg-2);
+    border: 1px solid var(--border-2);
+    font-family: var(--font-mono); font-size: 12px;
+    padding: 5px 10px; border-radius: 5px;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .opt.allow { color: var(--sem-ok); border-color: rgba(34,197,94,.3); }
+  .opt.deny  { color: var(--sem-err); border-color: rgba(239,68,68,.3); }
+  .kbd { font-size: 10.5px; padding: 1px 5px; border: 1px solid var(--border-2); border-radius: 3px; }
+
+  /* ── Section heads ────────────────────────────────────── */
+  .section { padding: 96px 0; border-top: 1px solid var(--border-1); }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--fg-3);
+    margin: 0 0 16px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .eyebrow::before {
+    content: ""; width: 18px; height: 1px; background: var(--fg-3); display: inline-block;
+  }
+  .s-title {
+    font-family: var(--font-display);
+    font-size: clamp(36px, 4.2vw, 56px);
+    font-weight: 600; letter-spacing: -0.02em;
+    line-height: 1.04;
+    margin: 0 0 20px;
+    text-wrap: balance;
+  }
+  .s-lead {
+    max-width: 640px;
+    font-size: 18px; line-height: 1.55;
+    color: var(--fg-2);
+    margin: 0 0 56px;
+    text-wrap: pretty;
+  }
+
+  /* ── Feature grid ─────────────────────────────────────── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+  }
+  .card {
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: 12px;
+    padding: 26px 26px 28px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-inset);
+    transition: border-color var(--dur-med) var(--ease-std), transform var(--dur-med) var(--ease-std);
+  }
+  .card:hover { border-color: var(--border-2); }
+  .card .ico {
+    display: inline-flex;
+    width: 36px; height: 36px;
+    align-items: center; justify-content: center;
+    border: 1px solid var(--border-2);
+    border-radius: 8px;
+    background: rgba(37,99,235,.08);
+    color: var(--brand-blue-bright);
+    margin-bottom: 18px;
+  }
+  .card .ico svg { width: 18px; height: 18px; stroke-width: 1.75; }
+  .card h3 {
+    font-size: 20px; font-weight: 600; margin: 0 0 8px;
+    letter-spacing: -0.01em;
+    color: var(--fg-1);
+  }
+  .card p {
+    font-size: 14.5px; line-height: 1.55;
+    color: var(--fg-2); margin: 0;
+    text-wrap: pretty;
+  }
+  .card code {
+    font-family: var(--font-mono);
+    color: var(--sem-user);
+    font-size: 12.5px;
+  }
+
+  .card.w3 { grid-column: span 3; }
+  .card.w2 { grid-column: span 2; }
+  .card.w4 { grid-column: span 4; }
+  .card.w6 { grid-column: span 6; }
+
+  .card.feature-hero {
+    padding: 36px;
+    background:
+      radial-gradient(ellipse at 0% 0%, rgba(37,99,235,.25), transparent 55%),
+      radial-gradient(ellipse at 100% 100%, rgba(124,58,237,.15), transparent 55%),
+      #0B0D13;
+    border-color: var(--border-2);
+  }
+  .card.feature-hero h3 { font-size: 28px; letter-spacing: -0.018em; margin-bottom: 12px; }
+  .card.feature-hero p { font-size: 16px; max-width: 92%; }
+
+  .model-list {
+    margin-top: 22px;
+    display: flex; flex-direction: column; gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .model-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 8px 0;
+    border-top: 1px dashed var(--border-1);
+    color: var(--fg-2);
+  }
+  .model-row:first-child { border-top: 0; padding-top: 0; }
+  .model-row .prov {
+    color: var(--fg-3); text-transform: uppercase; font-size: 10.5px; letter-spacing: .08em;
+    width: 92px; flex-shrink: 0;
+  }
+  .model-row .nm { color: var(--fg-1); font-weight: 500; }
+  .model-row .spacer { flex: 1; }
+  .model-row .id { color: var(--fg-3); font-size: 12px; }
+
+  /* ── Commands table ───────────────────────────────────── */
+  .cmd-table {
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .cmd-row {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 24px;
+    padding: 14px 22px;
+    border-top: 1px solid var(--border-1);
+    align-items: baseline;
+  }
+  .cmd-row:first-child { border-top: 0; }
+  .cmd-row:hover { background: rgba(255,255,255,0.015); }
+  .cmd-row .cmd {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--sem-user);
+    font-weight: 500;
+  }
+  .cmd-row .desc {
+    font-size: 14px; color: var(--fg-2);
+  }
+  .cmd-row .desc b { color: var(--fg-1); font-weight: 500; }
+
+  /* ── Gateway diagram ──────────────────────────────────── */
+  .gateway {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr 1fr;
+    gap: 16px;
+    align-items: stretch;
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .gw-col {
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: 10px;
+    padding: 18px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .gw-col h4 {
+    margin: 0 0 4px;
+    font-family: var(--font-sans);
+    font-size: 12px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--fg-3); font-weight: 500;
+  }
+  .gw-item {
+    padding: 8px 10px;
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: 6px;
+    color: var(--fg-1);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .gw-item .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .gw-item .dot.b { background: #2563EB; }
+  .gw-item .dot.p { background: #7C3AED; }
+  .gw-item .dot.c { background: #22D3EE; }
+  .gw-item .dot.y { background: #E9B84A; }
+  .gw-item .dot.g { background: #22C55E; }
+  .gw-center {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(37,99,235,.3), transparent 60%),
+      #0B0D13;
+    border: 1px solid var(--border-2);
+    border-radius: 10px;
+    padding: 22px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    text-align: center;
+    position: relative;
+  }
+  .gw-center .mark { width: 54px; height: 54px; margin-bottom: 6px; }
+  .gw-center .label {
+    font-family: var(--font-sans); font-weight: 600; font-size: 18px;
+    letter-spacing: -0.01em;
+    color: var(--fg-1);
+  }
+  .gw-center .sub { color: var(--fg-3); font-size: 12px; margin: 0; }
+  .gw-center .endpoints {
+    margin-top: 10px;
+    display: flex; flex-direction: column; gap: 4px; width: 100%;
+  }
+  .gw-endpoint {
+    font-size: 11.5px;
+    padding: 6px 8px;
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: 5px;
+    color: var(--fg-2);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .gw-endpoint .m { color: var(--sem-bot); font-weight: 700; width: 36px; flex-shrink: 0; }
+
+  /* ── Approvals block ──────────────────────────────────── */
+  .approval-demo {
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: 12px;
+    padding: 28px 30px;
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    line-height: 1.6;
+  }
+  .approval-demo .ttl { color: var(--fg-1); font-weight: 600; }
+  .approval-demo .code-block {
+    margin: 12px 0 14px;
+    padding: 10px 14px;
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: 6px;
+    color: var(--sem-warn);
+  }
+  .approval-demo .choices { display: flex; gap: 12px; color: var(--fg-2); flex-wrap: wrap; }
+  .approval-demo .choices span { color: var(--fg-2); }
+  .approval-demo .c-a { color: var(--sem-ok); font-weight: 600; }
+  .approval-demo .c-w { color: var(--brand-blue-bright); font-weight: 600; }
+  .approval-demo .c-d { color: var(--sem-err); font-weight: 600; }
+  .approval-demo .prompt-dot { color: var(--sem-user); margin-top: 8px; }
+
+  /* ── CTA ──────────────────────────────────────────────── */
+  .cta {
+    padding: 120px 0;
+    text-align: center;
+    border-top: 1px solid var(--border-1);
+    background:
+      radial-gradient(ellipse 800px 400px at 50% 100%, rgba(124,58,237,.12), transparent 70%),
+      transparent;
+  }
+  .cta h2 {
+    font-family: var(--font-display);
+    font-size: clamp(44px, 6vw, 80px);
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 0.98;
+    margin: 0 0 20px;
+  }
+  .cta h2 .grad {
+    background: linear-gradient(90deg,#7C3AED,#4338CA,#2563EB,#0284C7,#22D3EE);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    font-style: italic;
+    animation: sweep 6s linear infinite;
+  }
+  .cta p {
+    max-width: 500px; margin: 0 auto 32px;
+    font-size: 17px; color: var(--fg-2);
+    text-wrap: pretty;
+  }
+  .cta .ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+  /* ── Footer ───────────────────────────────────────────── */
+  .footer {
+    border-top: 1px solid var(--border-1);
+    padding: 40px 0 48px;
+  }
+  .footer-inner {
+    display: flex; align-items: center; gap: 24px;
+    flex-wrap: wrap;
+  }
+  .footer-logo { display: flex; align-items: center; gap: 10px; color: var(--fg-2); font-size: 14px; }
+  .footer-logo img { height: 22px; }
+  .footer-logo b { color: var(--fg-1); font-weight: 600; }
+  .footer-meta { color: var(--fg-3); font-size: 13px; font-family: var(--font-mono); }
+  .footer-spacer { flex: 1; }
+  .footer-links { display: flex; gap: 20px; }
+  .footer-links a {
+    font-size: 13px; color: var(--fg-3);
+    transition: color var(--dur-fast) var(--ease-std);
+  }
+  .footer-links a:hover { color: var(--fg-1); }
+
+  /* ── Responsive ───────────────────────────────────────── */
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .card.w3, .card.w2, .card.w4, .card.w6 { grid-column: span 2; }
+    .gateway { grid-template-columns: 1fr; }
+    .cmd-row { grid-template-columns: 1fr; gap: 4px; }
+    .nav-links { display: none; }
+    .banner { font-size: 10px; }
+  }
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: 1fr; }
+    .card.w3, .card.w2, .card.w4, .card.w6 { grid-column: span 1; }
+    .hero { padding: 64px 0 48px; }
+    .hero-stats { gap: 28px; }
+    .banner { font-size: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── NAV ────────────────────────────────────────────── -->
+<nav class="nav">
+  <div class="wrap nav-inner">
+    <a class="nav-logo" href="#">
+      <img src="assets/mahan-mark.png" alt="MahanAI">
+      <b>MahanAI</b>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#gateway">Gateway</a>
+      <a href="#commands">Commands</a>
+      <a href="#install">Install</a>
+      <a href="https://mahancreate.github.io/mahanai" target="_blank" rel="noopener">Docs</a>
+    </div>
+    <div class="nav-spacer"></div>
+    <a class="nav-cta" href="https://github.com/mahancreate/mahanai" target="_blank" rel="noopener">
+      <span class="star">★</span>
+      mahancreate/mahanai
+    </a>
+  </div>
+</nav>
+
+<!-- ── HERO ───────────────────────────────────────────── -->
+<section class="hero">
+  <div class="wrap">
+    <div class="pill">
+      <span class="tag">Super 2.0</span>
+      <span>now with claude haiku 4.5 default</span>
+      <span class="arr">→</span>
+    </div>
+
+    <h1 class="headline">
+      The <span class="grad">perfect</span><br>
+      coding agent.
+    </h1>
+
+    <p class="sub">
+      Terminal-first. Multi-model. Approvals-first.<br>
+      <b style="color:var(--fg-1);">MahanAI</b> runs in your shell, routes to
+      <code>claude</code>, <code>codex</code>, <code>nvidia</code>, or any
+      OpenAI-compatible endpoint, and asks before it touches a thing.
+    </p>
+
+    <div class="hero-cta">
+      <a class="btn primary" href="#install">
+        <i data-lucide="terminal"></i>
+        Get started
+      </a>
+      <a class="btn ghost" href="https://github.com/mahancreate/mahanai" target="_blank" rel="noopener">
+        <i data-lucide="github"></i>
+        View on GitHub
+      </a>
+    </div>
+
+    <div class="install-row">
+      <div class="install-box">
+        <span class="dollar">$</span>
+        <span class="cmd" id="cmd-pip">pip install mahanai</span>
+        <button class="copy" data-copy="pip install mahanai">Copy</button>
+      </div>
+      <div class="install-box">
+        <span class="dollar">$</span>
+        <span class="cmd">mahanai</span>
+        <button class="copy" data-copy="mahanai">Copy</button>
+      </div>
+    </div>
+
+    <div class="hero-stats">
+      <div class="stat">
+        <div class="num">12+</div>
+        <div class="lbl">Models supported</div>
+      </div>
+      <div class="stat">
+        <div class="num">4</div>
+        <div class="lbl">Provider backends</div>
+      </div>
+      <div class="stat">
+        <div class="num">1</div>
+        <div class="lbl">Local gateway</div>
+      </div>
+      <div class="stat">
+        <div class="num">0</div>
+        <div class="lbl">Unapproved tool calls</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TERMINAL PREVIEW ───────────────────────────────── -->
+<section class="term-section">
+  <div class="wrap">
+    <div class="term-wrap">
+      <div class="tb">
+        <div class="tb-dots"><div class="tb-dot r"></div><div class="tb-dot y"></div><div class="tb-dot g"></div></div>
+        <div class="tb-title">~/code/mahanai — mahanai</div>
+        <div class="tb-tag">zsh</div>
+      </div>
+      <div class="term-body">
+        <div class="rule">================================================================</div>
+<pre class="banner">███╗   ███╗ █████╗ ██╗  ██╗ █████╗ ███╗   ██╗ █████╗ ██╗
+████╗ ████║██╔══██╗██║  ██║██╔══██╗████╗  ██║██╔══██╗██║
+██╔████╔██║███████║███████║███████║██╔██╗ ██║███████║██║
+██║╚██╔╝██║██╔══██║██╔══██║██╔══██║██║╚██╗██║██╔══██║██║
+██║ ╚═╝ ██║██║  ██║██║  ██║██║  ██║██║ ╚████║██║  ██║██║
+╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝</pre>
+        <div class="rule">================================================================</div>
+        <div class="term-meta"><b>Super 2.0</b> &nbsp;|&nbsp; Claude Haiku 4.5 &nbsp;|&nbsp; <span class="dim">/api-key to save key (persists)</span></div>
+        <div class="dim">Replies stream live (MAHANAI_STREAM=0 to wait for full text)</div>
+        <div class="cmd-line">/help  /exit  /quit</div>
+        <div class="rule">================================================================</div>
+
+        <div style="height: 14px;"></div>
+
+        <div class="line"><span class="user-p">You:</span> run npm install react</div>
+
+        <div class="approval">
+          <div class="approval-title">Shell Command</div>
+          <div class="approval-cmd">npm install react</div>
+          <div class="opts">
+            <span class="opt allow"><span class="kbd">A</span> Allow</span>
+            <span class="opt"><span class="kbd">W</span> Always Allow (npm)</span>
+            <span class="opt deny"><span class="kbd">D</span> Deny</span>
+          </div>
+        </div>
+
+        <div class="line dim">  → npm install react</div>
+        <div class="line ok">  added 4 packages in 2.1s</div>
+        <div class="line"><span class="bot-p">MahanAI:</span> done. exit 0.</div>
+        <div class="line"><span class="bot-p">MahanAI:</span> anything else?<span class="caret"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FEATURES ───────────────────────────────────────── -->
+<section class="section" id="features">
+  <div class="wrap">
+    <div class="eyebrow">§ 01 · features</div>
+    <h2 class="s-title">Built for people<br>who live in the terminal.</h2>
+    <p class="s-lead">
+      Every surface is shaped by the shell: monospace rhythm, bracketed keys,
+      ASCII rules, and a gradient banner that tweens while you wait.
+    </p>
+
+    <div class="grid">
+
+      <div class="card feature-hero w4">
+        <div class="ico"><i data-lucide="terminal-square"></i></div>
+        <h3>Chat loop, streaming, tool-runtime — all in your shell.</h3>
+        <p>
+          <code>mahanai</code> launches a full-width chat loop with a gradient ASCII banner,
+          a status line with your model / effort / plan / theme, and an approval-first tool
+          runtime that refuses to touch your machine without a key press.
+        </p>
+        <div class="model-list">
+          <div class="model-row">
+            <span class="prov">Claude</span>
+            <span class="nm">Claude Haiku 4.5</span>
+            <span class="spacer"></span>
+            <span class="id">claude-haiku-4-5 · default</span>
+          </div>
+          <div class="model-row">
+            <span class="prov">Claude</span>
+            <span class="nm">Claude Sonnet 4.6</span>
+            <span class="spacer"></span>
+            <span class="id">/mode claude</span>
+          </div>
+          <div class="model-row">
+            <span class="prov">Codex</span>
+            <span class="nm">GPT-5.4 · GPT-5.2-Codex</span>
+            <span class="spacer"></span>
+            <span class="id">/codex-login</span>
+          </div>
+          <div class="model-row">
+            <span class="prov">NVIDIA</span>
+            <span class="nm">Llama 3.3 70B</span>
+            <span class="spacer"></span>
+            <span class="id">/api-key-nvidia</span>
+          </div>
+          <div class="model-row">
+            <span class="prov">Custom</span>
+            <span class="nm">Any OpenAI-compatible endpoint</span>
+            <span class="spacer"></span>
+            <span class="id">/custom &lt;url&gt; &lt;model&gt;</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card w2">
+        <div class="ico"><i data-lucide="shield-check"></i></div>
+        <h3>Approvals, always.</h3>
+        <p>
+          Every shell, git, gh, and file op prompts with
+          <code>[A] [W] [D]</code>. Destructive commands are flagged and
+          Always-Allow is disabled. No surprises.
+        </p>
+      </div>
+
+      <div class="card w2">
+        <div class="ico"><i data-lucide="network"></i></div>
+        <h3>Local gateway.</h3>
+        <p>
+          <code>mahanai --server</code> exposes every provider behind one
+          OpenAI- or Anthropic-compatible endpoint. Point Cursor, Continue,
+          or Claude Code at it.
+        </p>
+      </div>
+
+      <div class="card w2">
+        <div class="ico"><i data-lucide="palette"></i></div>
+        <h3>Four themes.</h3>
+        <p>
+          <code>midnight</code>, <code>light</code>, and
+          colorblind-friendly variants. The banner gradient, prompt, and
+          status colors all update together.
+        </p>
+      </div>
+
+      <div class="card w2">
+        <div class="ico"><i data-lucide="gauge"></i></div>
+        <h3>Effort dial.</h3>
+        <p>
+          <code>/effort low|medium|high|very-high</code> maps to
+          reasoning.effort on Codex and prepends thinking guidance on
+          Claude. One knob, every backend.
+        </p>
+      </div>
+
+      <div class="card w2">
+        <div class="ico"><i data-lucide="list-checks"></i></div>
+        <h3>Plan mode.</h3>
+        <p>
+          <code>/plan on</code> makes MahanAI outline its approach
+          before every response. Useful for multi-step refactors where
+          you want to read the plan before code moves.
+        </p>
+      </div>
+
+      <div class="card w3">
+        <div class="ico"><i data-lucide="key-round"></i></div>
+        <h3>Keys stay local.</h3>
+        <p>
+          Keys save to <code>~/.config/mahanai/config.json</code>
+          (or <code>%APPDATA%\MahanAI\</code> on Windows). Env-var overrides
+          via <code>MAHANAI_API_KEY</code>. Nothing leaves your box unless
+          you told it to.
+        </p>
+      </div>
+
+      <div class="card w3">
+        <div class="ico"><i data-lucide="zap"></i></div>
+        <h3>Streaming, end-to-end.</h3>
+        <p>
+          SSE preserved across the gateway in every direction — OpenAI→Anthropic,
+          Anthropic→OpenAI, or transparent proxy. Set
+          <code>MAHANAI_STREAM=0</code> to wait for the full response.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── GATEWAY ────────────────────────────────────────── -->
+<section class="section" id="gateway">
+  <div class="wrap">
+    <div class="eyebrow">§ 02 · gateway</div>
+    <h2 class="s-title">One endpoint.<br>Every provider.</h2>
+    <p class="s-lead">
+      <code>mahanai --server --port 8080 --type openai</code> — a local HTTP
+      gateway that routes every request to the right backend based on the
+      <code>model</code> field. Format conversion happens transparently.
+    </p>
+
+    <div class="gateway">
+      <div class="gw-col">
+        <h4>Clients</h4>
+        <div class="gw-item"><span class="dot b"></span>Cursor</div>
+        <div class="gw-item"><span class="dot b"></span>Continue.dev</div>
+        <div class="gw-item"><span class="dot b"></span>Claude Code</div>
+        <div class="gw-item"><span class="dot b"></span>LM Studio</div>
+        <div class="gw-item"><span class="dot b"></span>curl / raw HTTP</div>
+      </div>
+
+      <div class="gw-center">
+        <img class="mark" src="assets/mahan-mark.png" alt="">
+        <div class="label">MahanAI Gateway</div>
+        <p class="sub">localhost · routes by model</p>
+        <div class="endpoints">
+          <div class="gw-endpoint"><span class="m">POST</span>/v1/chat/completions</div>
+          <div class="gw-endpoint"><span class="m">POST</span>/v1/messages</div>
+          <div class="gw-endpoint"><span class="m">GET</span>/v1/models</div>
+        </div>
+      </div>
+
+      <div class="gw-col">
+        <h4>Backends</h4>
+        <div class="gw-item"><span class="dot p"></span>Anthropic · claude-*</div>
+        <div class="gw-item"><span class="dot g"></span>OpenAI Codex · gpt-5.*</div>
+        <div class="gw-item"><span class="dot c"></span>NVIDIA NIM · llama-3.3</div>
+        <div class="gw-item"><span class="dot y"></span>Mahan NIM · mahanai</div>
+        <div class="gw-item"><span class="dot b"></span>Custom · any /v1</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── APPROVALS ──────────────────────────────────────── -->
+<section class="section" id="approvals">
+  <div class="wrap">
+    <div class="eyebrow">§ 03 · approvals</div>
+    <h2 class="s-title">It asks before<br>it acts.</h2>
+    <p class="s-lead">
+      MahanAI's tool runtime stops at every shell, git, gh, and file op. You
+      press one key. Always-Allow saves a rule; destructive commands can't be
+      saved at all.
+    </p>
+
+    <div class="grid">
+      <div class="approval-demo w3">
+        <div class="ttl">Shell Command</div>
+        <div class="code-block">rm -rf ./dist &nbsp;<span style="color:var(--sem-err); font-size:11px; letter-spacing:.05em;">[DESTRUCTIVE]</span></div>
+        <div class="choices">
+          <span><span class="c-a">[A]</span> Allow</span>
+          <span style="color:var(--fg-4);">[W] Always Allow disabled</span>
+          <span><span class="c-d">[D]</span> Deny</span>
+        </div>
+        <div class="prompt-dot">&gt;</div>
+      </div>
+
+      <div class="approval-demo w3">
+        <div class="ttl">Write / Create File</div>
+        <div class="code-block" style="color:var(--sem-bot);">~/project/src/main.py</div>
+        <div class="choices">
+          <span><span class="c-a">[A]</span> Allow</span>
+          <span><span class="c-w">[W]</span> Always Allow (Write / Create File)</span>
+          <span><span class="c-d">[D]</span> Deny</span>
+        </div>
+        <div class="prompt-dot">&gt;</div>
+      </div>
+
+      <div class="approval-demo w3">
+        <div class="ttl">Git Command</div>
+        <div class="code-block" style="color:var(--sem-info);">git push origin main</div>
+        <div class="choices">
+          <span><span class="c-a">[A]</span> Allow</span>
+          <span style="color:var(--fg-4);">[W] n/a for git</span>
+          <span><span class="c-d">[D]</span> Deny</span>
+        </div>
+        <div class="prompt-dot">&gt;</div>
+      </div>
+
+      <div class="approval-demo w3">
+        <div class="ttl">GitHub Command</div>
+        <div class="code-block" style="color:var(--sem-info);">gh pr create --title "..."</div>
+        <div class="choices">
+          <span><span class="c-a">[A]</span> Allow</span>
+          <span style="color:var(--fg-4);">[W] n/a for gh</span>
+          <span><span class="c-d">[D]</span> Deny</span>
+        </div>
+        <div class="prompt-dot">&gt;</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── COMMANDS ───────────────────────────────────────── -->
+<section class="section" id="commands">
+  <div class="wrap">
+    <div class="eyebrow">§ 04 · reference</div>
+    <h2 class="s-title">Every command<br>is a slash away.</h2>
+    <p class="s-lead">
+      Slash-prefixed, lowercase, kebab-case when multi-word. POSIX flags
+      for launch options. No menus, no mice.
+    </p>
+
+    <div class="cmd-table">
+      <div class="cmd-row">
+        <span class="cmd">/models</span>
+        <span class="desc">Interactive model selector. <b>↑↓</b> to navigate, <b>Enter</b> to confirm, <b>Esc</b> to cancel.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/mode claude</span>
+        <span class="desc">Quick-switch to Claude Sonnet 4.6. <code>/mode default</code> switches back.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/effort &lt;level&gt;</span>
+        <span class="desc">Set reasoning effort: <b>low</b>, <b>medium</b>, <b>high</b>, or <b>very-high</b>.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/plan on · /plan off</span>
+        <span class="desc">Toggle plan mode. MahanAI outlines its approach before every response.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/themes &lt;name&gt;</span>
+        <span class="desc">Switch theme: <b>midnight</b>, <b>light</b>, <b>midnight-cb</b>, <b>light-cb</b>.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/approvals · /approvals clear</span>
+        <span class="desc">List or wipe all <b>Always Allow</b> rules.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/codex-login · /codex-logout</span>
+        <span class="desc">Sign in to OpenAI via browser OAuth (PKCE). Tokens refresh silently.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/api-key [key]</span>
+        <span class="desc">Save server API key. Omit to enter via hidden prompt. <code>/api-key clear</code> removes it.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/custom &lt;url&gt; [model] [key]</span>
+        <span class="desc">Point at any OpenAI-compatible server — Ollama, LM Studio, vLLM, OpenRouter.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/help · /exit · /quit</span>
+        <span class="desc">The usual.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── INSTALL ────────────────────────────────────────── -->
+<section class="section" id="install">
+  <div class="wrap">
+    <div class="eyebrow">§ 05 · install</div>
+    <h2 class="s-title">Two lines. That's it.</h2>
+    <p class="s-lead">
+      MahanAI ships on PyPI. One import, one command, you're in the loop.
+    </p>
+
+    <div class="install-row" style="margin-top: 0; max-width: 780px;">
+      <div class="install-box">
+        <span class="dollar">$</span>
+        <span class="cmd">pip install mahanai</span>
+        <button class="copy" data-copy="pip install mahanai">Copy</button>
+      </div>
+      <div class="install-box">
+        <span class="dollar">$</span>
+        <span class="cmd">mahanai</span>
+        <button class="copy" data-copy="mahanai">Copy</button>
+      </div>
+    </div>
+
+    <div style="margin-top: 32px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;" class="install-detail-grid">
+      <div class="card" style="padding: 22px;">
+        <h3 style="font-size: 16px; margin-bottom: 10px;">Compact mode</h3>
+        <p style="font-size: 13.5px;"><code>mahanai --compact</code> · small MAI banner, trimmed header.</p>
+      </div>
+      <div class="card" style="padding: 22px;">
+        <h3 style="font-size: 16px; margin-bottom: 10px;">Server mode</h3>
+        <p style="font-size: 13.5px;"><code>mahanai --server --port 8080</code> · local gateway.</p>
+      </div>
+      <div class="card" style="padding: 22px;">
+        <h3 style="font-size: 16px; margin-bottom: 10px;">No-stream</h3>
+        <p style="font-size: 13.5px;"><code>MAHANAI_STREAM=0</code> · wait for full response.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ────────────────────────────────────────────── -->
+<section class="cta">
+  <div class="wrap">
+    <h2>
+      Stop clicking.<br>
+      Start <span class="grad">shipping</span>.
+    </h2>
+    <p>
+      Ten seconds from pip install to a streaming chat loop with every model
+      you own, in every format you need, asking politely before it touches
+      your repo.
+    </p>
+    <div class="ctas">
+      <a class="btn primary" href="#install">
+        <i data-lucide="download"></i>
+        pip install mahanai
+      </a>
+      <a class="btn ghost" href="https://mahancreate.github.io/mahanai" target="_blank" rel="noopener">
+        <i data-lucide="book-open"></i>
+        Read the docs
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ─────────────────────────────────────────── -->
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="footer-logo">
+      <img src="assets/mahan-mark.png" alt="">
+      <span><b>MahanAI</b> · a project of The Mahan Foundation</span>
+    </div>
+    <div class="footer-spacer"></div>
+    <div class="footer-links">
+      <a href="https://github.com/mahancreate/mahanai" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://mahancreate.github.io/mahanai" target="_blank" rel="noopener">Docs</a>
+      <a href="https://pypi.org/project/mahanai/" target="_blank" rel="noopener">PyPI</a>
+      <a href="#features">Features</a>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top: 24px;">
+    <div class="footer-meta">// mahanai · super 2.0 · ©&nbsp;2026 · the perfect coding agent</div>
+  </div>
+</footer>
+
+<script>
+  // Copy buttons
+  document.querySelectorAll('.copy').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const text = btn.dataset.copy;
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch(e) {
+        // fallback
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch(_) {}
+        ta.remove();
+      }
+      const orig = btn.textContent;
+      btn.textContent = 'Copied';
+      btn.classList.add('ok');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('ok'); }, 1200);
+    });
+  });
+
+  // Lucide icons
+  if (window.lucide) window.lucide.createIcons();
+</script>
+
+</body>
 </html>
