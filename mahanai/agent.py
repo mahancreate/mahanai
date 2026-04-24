@@ -33,6 +33,10 @@ from mahanai.config import (
     load_custom_endpoint,
     load_nvidia_api_key,
     load_theme,
+    load_custom_theme_path,
+    load_custom_theme_info,
+    save_custom_theme_info,
+    clear_custom_theme,
     resolve_api_key,
     save_api_key,
     save_codex_token,
@@ -583,7 +587,7 @@ def _stream_wham(
                 "output": result,
             })
         input_msgs = input_msgs + new_items
-        print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
+        print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
 
     return "".join(all_parts)
 
@@ -789,6 +793,8 @@ def _print_help() -> None:
         f"  /themes                 List available themes\n"
         f"  /themes <name>          Switch theme: midnight, light,\n"
         f"                            midnight-cb, light-cb\n"
+        f"  /theme-load <path>      Load a custom .mai theme file\n"
+        f"  /theme-unload           Remove the active custom .mai theme\n"
         f"  /approvals              Show stored Always Allow rules\n"
         f"  /approvals clear        Remove all Always Allow rules\n"
         f"  /codex-login            Sign in to OpenAI via browser (Codex Direct)\n"
@@ -815,10 +821,44 @@ def main() -> None:
     api_key = resolve_api_key()
     nvidia_api_key = load_nvidia_api_key()
 
+    def _register_and_apply_saved_mai_theme() -> None:
+        """On startup: register the saved .mai theme in the menu and apply its colors."""
+        info = load_custom_theme_info()
+        if not info:
+            return
+        from pathlib import Path
+        from mahanai.mai_parser import parse_mai_file
+        p = Path(info.get("path", ""))
+        if not p.is_file():
+            return
+        try:
+            mai = parse_mai_file(p)
+            slug = info.get("slug") or mai.slug()
+            display = info.get("display") or mai.display()
+            C.register_mai_theme(slug, display, str(p))
+            C.apply_mai_theme(mai)
+        except Exception:
+            pass
+
+    def _reapply_mai_theme() -> None:
+        """Re-apply saved .mai color overrides after a base theme switch."""
+        info = load_custom_theme_info()
+        if not info:
+            return
+        from pathlib import Path
+        from mahanai.mai_parser import parse_mai_file
+        p = Path(info.get("path", ""))
+        if p.is_file():
+            try:
+                C.apply_mai_theme(parse_mai_file(p))
+            except Exception:
+                pass
+
     # ── Server mode ───────────────────────────────────────────────────────────
     if args.server:
         from mahanai.server import ServerConfig, run_server
         C.apply_theme(load_theme())
+        _register_and_apply_saved_mai_theme()
         run_server(ServerConfig(
             server_type      = args.type,
             port             = args.port,
@@ -847,6 +887,7 @@ def main() -> None:
     current_effort = "medium"
     plan_mode = False
     C.apply_theme(load_theme())
+    _register_and_apply_saved_mai_theme()
     print_startup_banner(AVAILABLE_MODELS[active_model_idx]["label"], compact=compact)
     print()
 
@@ -865,7 +906,7 @@ def main() -> None:
 
     while True:
         try:
-            print(f"{C.USER}You{C.RST}: ", end="", flush=True)
+            print(f"{C.USER}{C.USER_NAME}{C.RST}: ", end="", flush=True)
             user = input().strip()
         except (EOFError, KeyboardInterrupt):
             print()
@@ -1024,19 +1065,75 @@ def main() -> None:
                 if not sub:
                     print(f"{C.DIM}Available themes:{C.RST}")
                     for slug, display in C.THEME_DISPLAY.items():
-                        print(f"  {C.OK}{slug:<16}{C.RST}  {display}")
+                        mai_tag = f"  {C.DIM}[.mai]{C.RST}" if slug in C.MAI_THEMES else ""
+                        print(f"  {C.OK}{slug:<22}{C.RST}  {display}{mai_tag}")
                     print()
                 elif sub not in C.THEME_NAMES:
                     print(
                         f"{C.ERR}Unknown theme '{sub}'.{C.RST} "
                         f"Available: {', '.join(C.THEME_NAMES)}\n"
                     )
+                elif sub in C.MAI_THEMES:
+                    # Re-select a registered .mai theme
+                    from pathlib import Path as _Path
+                    from mahanai.mai_parser import parse_mai_file as _parse_mai
+                    _mp = _Path(C.MAI_THEMES[sub])
+                    if not _mp.is_file():
+                        print(f"{C.ERR}Theme file missing: {C.MAI_THEMES[sub]}{C.RST}\n")
+                    else:
+                        try:
+                            _mai = _parse_mai(_mp)
+                            C.apply_theme("midnight")
+                            C.apply_mai_theme(_mai)
+                            save_theme(sub)
+                            print_startup_banner(AVAILABLE_MODELS[active_model_idx]["label"], compact=compact)
+                            print()
+                            print(f"{C.OK}Theme set to:{C.RST} {C.THEME_DISPLAY[sub]}\n")
+                        except Exception as _e:
+                            print(f"{C.ERR}Failed to apply theme: {_e}{C.RST}\n")
                 else:
                     C.apply_theme(sub)
+                    _reapply_mai_theme()
                     save_theme(sub)
                     print_startup_banner(AVAILABLE_MODELS[active_model_idx]["label"], compact=compact)
                     print()
                     print(f"{C.OK}Theme set to:{C.RST} {C.THEME_DISPLAY[sub]}\n")
+                continue
+            if cmd == "/theme-load":
+                _path = rest.strip()
+                if not _path:
+                    print(f"{C.ERR}Usage: /theme-load <path-to-file.mai>{C.RST}\n")
+                    continue
+                from pathlib import Path as _Path
+                from mahanai.mai_parser import parse_mai_file as _parse_mai
+                _p = _Path(_path).expanduser().resolve()
+                if not _p.is_file():
+                    print(f"{C.ERR}File not found: {_path}{C.RST}\n")
+                    continue
+                try:
+                    _mai = _parse_mai(_p)
+                    _slug = _mai.slug()
+                    _display = _mai.display()
+                    C.apply_theme("midnight")
+                    C.apply_mai_theme(_mai)
+                    C.register_mai_theme(_slug, _display, str(_p))
+                    save_custom_theme_info(_slug, _display, str(_p))
+                    save_theme(_slug)
+                    print_startup_banner(AVAILABLE_MODELS[active_model_idx]["label"], compact=compact)
+                    print()
+                    print(f"{C.OK}Theme loaded:{C.RST} {_display}  {C.DIM}(use /themes to switch){C.RST}\n")
+                except Exception as _e:
+                    print(f"{C.ERR}Failed to load theme: {_e}{C.RST}\n")
+                continue
+            if cmd == "/theme-unload":
+                C.unregister_all_mai_themes()
+                clear_custom_theme()
+                C.apply_theme("midnight")
+                C.reset_names()
+                save_theme("midnight")
+                print_startup_banner(AVAILABLE_MODELS[active_model_idx]["label"], compact=compact)
+                print()
+                print(f"{C.OK}Custom theme unloaded.{C.RST}\n")
                 continue
             if cmd == "/custom":
                 sub = rest.strip()
@@ -1088,7 +1185,7 @@ def main() -> None:
         # Route based on selected model
         if selected["mode"] == "claude":
             claude_model = selected.get("claude_model")
-            print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
+            print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
             _run_claude_cli(effective_user, model=claude_model, effort_instruction=effort_instr)
             print("\n")
             continue
@@ -1103,7 +1200,7 @@ def main() -> None:
                 continue
             codex_access, codex_account_id = creds
             history.append({"role": "user", "content": effective_user})
-            print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
+            print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
             try:
                 reply = _stream_wham(codex_access, codex_account_id, history, selected["name"], codex_effort, workspace)
             except (httpx.HTTPStatusError, httpx.RequestError) as e:
@@ -1119,7 +1216,7 @@ def main() -> None:
             indirect_token = _load_codex_indirect_key()
             if indirect_token:
                 history.append({"role": "user", "content": effective_user})
-                print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
+                print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
                 try:
                     reply = _stream_wham(indirect_token, None, history, selected["name"], codex_effort, workspace)
                 except (httpx.HTTPStatusError, httpx.RequestError) as e:
@@ -1130,7 +1227,7 @@ def main() -> None:
                 print("\n")
                 history.append({"role": "assistant", "content": reply})
             else:
-                print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
+                print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
                 _run_codex_cli(effective_user, model=selected["name"])
                 print("\n")
             continue
@@ -1143,7 +1240,7 @@ def main() -> None:
                 )
                 continue
             history.append({"role": "user", "content": effective_user})
-            print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
+            print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
             try:
                 reply = run_turn(
                     client,
@@ -1182,7 +1279,7 @@ def main() -> None:
             active_model = model
 
         history.append({"role": "user", "content": effective_user})
-        print(f"\n{C.BOT}MahanAI{C.RST}: ", end="", flush=True)
+        print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
         try:
             reply = run_turn(client, active_key, active_model, history, workspace, active_base_url)
         except (httpx.HTTPStatusError, httpx.RequestError) as e:

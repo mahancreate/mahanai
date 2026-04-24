@@ -168,6 +168,43 @@ def save_theme(theme: str) -> None:
     _write_config(data)
 
 
+def load_custom_theme_path() -> str | None:
+    info = _read_config().get("custom_theme") or {}
+    return (info.get("path") or _read_config().get("custom_theme_path") or "").strip() or None
+
+
+def save_custom_theme_path(path: str) -> None:
+    data = _read_config()
+    data["custom_theme_path"] = path.strip()
+    _write_config(data)
+
+
+def clear_custom_theme_path() -> None:
+    data = _read_config()
+    data.pop("custom_theme_path", None)
+    _write_config(data)
+
+
+def save_custom_theme_info(slug: str, display: str, path: str) -> None:
+    """Persist full .mai theme metadata so it can be re-registered on next startup."""
+    data = _read_config()
+    data["custom_theme"] = {"slug": slug, "display": display, "path": path}
+    _write_config(data)
+
+
+def load_custom_theme_info() -> dict | None:
+    """Return {slug, display, path} for the saved .mai theme, or None."""
+    return _read_config().get("custom_theme") or None
+
+
+def clear_custom_theme() -> None:
+    """Remove all saved .mai theme data from config."""
+    data = _read_config()
+    data.pop("custom_theme", None)
+    data.pop("custom_theme_path", None)
+    _write_config(data)
+
+
 def load_always_allowed() -> dict:
     return _read_config().get("always_allowed", {})
 

@@ -110,7 +110,9 @@ curl http://localhost:4343/v1/chat/completions \
 
 ## Themes
 
-MahanAI supports four terminal color themes, including two designed for colorblind accessibility.
+MahanAI supports four built-in terminal color themes, including two designed for colorblind accessibility, plus fully custom themes written in the `.mai` theme language.
+
+### Built-in themes
 
 | Theme | Description |
 |---|---|
@@ -128,6 +130,74 @@ MahanAI supports four terminal color themes, including two designed for colorbli
 ```
 
 Themes persist across sessions (saved to `config.json`). The banner gradient, prompt colors, and status colors all update when you switch.
+
+### Custom themes (.mai files)
+
+You can create fully custom themes using `.mai` files — a simple domain-specific language designed for MahanAI theming.
+
+```
+/theme-load path/to/mytheme.mai   # load and apply a custom theme
+/theme-unload                     # remove the custom theme, revert to midnight
+```
+
+Once loaded, the custom theme appears as a named entry in `/themes` alongside the built-in themes and persists across sessions. You can switch away and back to it just like any other theme.
+
+#### .mai file syntax
+
+```
+# Comments start with #
+
+# Declare the theme's identity
+theme.name        = my-theme          # slug used in /themes
+theme.pretty.name = My Custom Theme   # display name shown in /themes list
+theme.code.name   = author.my-theme   # optional qualified identifier
+theme.version     = 1.0.0
+
+# Import the default built-in themes as a base
+import mahanai-themes from requirements
+
+# Define named color aliases (hex codes or CSS color names)
+blue   = #0000FF
+green  = #00FF00
+red    = #FF0000
+yellow = #FFFF00
+
+# Banner ASCII art gradient (start color -> end color)
+ascii-art.default.color = gradient("blue -> red")
+
+# Chat message colors
+message.user.color = color("green")     # "You:" prompt color
+message.ai.color   = color("yellow")    # "MahanAI:" response color
+
+# Display name overrides
+message.ai.name   = text("my little ai")   # replaces "MahanAI" in chat
+message.user.name = text("Boss")            # replaces "You" in chat
+
+# Additional color slots
+message.err.color    = color("red")
+message.warn.color   = color("yellow")
+message.ok.color     = color("green")
+message.banner.color = color("purple")
+```
+
+#### Color values
+
+Colors can be specified anywhere as:
+
+| Format | Example |
+|---|---|
+| Hex code | `#FF0000`, `#F00` |
+| Named color | `red`, `green`, `blue`, `cyan`, `magenta`, `yellow`, `orange`, `purple`, `teal`, `gold`, `navy`, `pink`, `lime`, … |
+| Variable reference | `blue` (a name defined earlier in the same file) |
+
+#### Gradient syntax
+
+`gradient("start -> end")` interpolates 10 evenly-spaced hex colors between two colors and applies them across the banner ASCII art. Both endpoints accept hex codes or named colors.
+
+```
+ascii-art.default.color = gradient("purple -> cyan")
+ascii-art.default.color = gradient("#ff0000 -> #0000ff")
+```
 
 ---
 
@@ -256,8 +326,10 @@ Once saved, select **Custom Endpoint** from `/models` to start using it. The con
 | `/effort <level>` | Set reasoning effort: `low`, `medium`, `high`, `very-high` |
 | `/plan on` | Enable plan mode — MahanAI outlines a plan before every response |
 | `/plan off` | Disable plan mode |
-| `/themes` | List available color themes |
-| `/themes <name>` | Switch theme: `midnight`, `light`, `midnight-cb`, `light-cb` |
+| `/themes` | List available color themes (built-in and loaded .mai themes) |
+| `/themes <name>` | Switch theme by slug — built-in or custom .mai |
+| `/theme-load <path>` | Load a `.mai` theme file and add it to the themes menu |
+| `/theme-unload` | Remove the active custom theme and revert to midnight |
 | `/approvals` | Show stored Always Allow rules |
 | `/approvals clear` | Remove all Always Allow rules |
 | `/api-key [key]` | Save server API key (omit key for hidden prompt) |

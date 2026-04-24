@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 import colorama
+
+if TYPE_CHECKING:
+    from mahanai.mai_parser import MaiTheme
 
 _THEMES: dict[str, dict] = {
     "midnight": {
@@ -74,7 +78,7 @@ THEME_DISPLAY = {
     "light-cb":    "Light (Colorblind Friendly)",
 }
 
-# Module-level color variables — mutated by apply_theme()
+# Module-level color variables — mutated by apply_theme() / apply_mai_theme()
 RST: str = ""
 USER: str = ""
 BOT: str = ""
@@ -84,6 +88,13 @@ OK: str = ""
 DIM: str = ""
 WARN: str = ""
 banner_colors: list[str] = []
+
+# Display names — mutated by apply_mai_theme()
+AI_NAME: str = "MahanAI"
+USER_NAME: str = "You"
+
+# Registered .mai themes: slug -> file path (populated at runtime)
+MAI_THEMES: dict[str, str] = {}
 
 
 def apply_theme(name: str) -> None:
@@ -103,6 +114,67 @@ def apply_theme(name: str) -> None:
     DIM    = theme["DIM"]()
     WARN   = theme["WARN"]()
     banner_colors = list(theme["banner_colors"])
+
+
+def _hex_to_ansi(hex_color: str, bright: bool = False) -> str:
+    """Convert a #RRGGBB hex color to an ANSI 24-bit foreground escape sequence."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    code = f"\x1b[38;2;{r};{g};{b}m"
+    if bright:
+        code += "\x1b[1m"
+    return code
+
+
+def apply_mai_theme(mai_theme: "MaiTheme") -> None:
+    """Apply a parsed MaiTheme on top of the currently active base theme."""
+    global USER, BOT, ERR, BANNER, OK, WARN, banner_colors, AI_NAME, USER_NAME
+    if os.environ.get("NO_COLOR", "").strip():
+        return
+    if mai_theme.user_color:
+        USER = _hex_to_ansi(mai_theme.user_color, bright=True)
+    if mai_theme.ai_color:
+        BOT = _hex_to_ansi(mai_theme.ai_color, bright=True)
+    if mai_theme.err_color:
+        ERR = _hex_to_ansi(mai_theme.err_color, bright=True)
+    if mai_theme.banner_color:
+        BANNER = _hex_to_ansi(mai_theme.banner_color, bright=True)
+    if mai_theme.ok_color:
+        OK = _hex_to_ansi(mai_theme.ok_color)
+    if mai_theme.warn_color:
+        WARN = _hex_to_ansi(mai_theme.warn_color, bright=True)
+    if mai_theme.banner_gradient:
+        banner_colors = list(mai_theme.banner_gradient)
+    if mai_theme.ai_name:
+        AI_NAME = mai_theme.ai_name
+    if mai_theme.user_name:
+        USER_NAME = mai_theme.user_name
+
+
+def reset_names() -> None:
+    """Reset display names to their defaults (used when unloading a custom theme)."""
+    global AI_NAME, USER_NAME
+    AI_NAME = "MahanAI"
+    USER_NAME = "You"
+
+
+def register_mai_theme(slug: str, display: str, path: str) -> None:
+    """Add a .mai theme to the THEME_NAMES / THEME_DISPLAY / MAI_THEMES tables."""
+    global MAI_THEMES
+    if slug not in THEME_NAMES:
+        THEME_NAMES.append(slug)
+    THEME_DISPLAY[slug] = display
+    MAI_THEMES[slug] = path
+
+
+def unregister_all_mai_themes() -> None:
+    """Remove every .mai theme from the in-memory theme tables."""
+    global MAI_THEMES
+    for slug in list(MAI_THEMES.keys()):
+        if slug in THEME_NAMES:
+            THEME_NAMES.remove(slug)
+        THEME_DISPLAY.pop(slug, None)
+    MAI_THEMES.clear()
 
 
 if not os.environ.get("NO_COLOR", "").strip():

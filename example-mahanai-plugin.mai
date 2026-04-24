@@ -1,0 +1,25 @@
+# Comment Example
+
+# Importing theme requirements from default
+import mahanai-themes from requirements
+
+theme.pretty.name = Example MahanAI theme
+theme.code.name = mahanai-foundation.example.theme
+theme.name = mahanai-example
+theme.version = 1.0.0
+
+# Importing the colors i want to use for the theme with names so i don't have to write color codes each time
+blue = #0000FF
+green = #00FF00
+red = #FF0000
+yellow = #FFFF00
+
+# Making the MAHANAI ascii art colors a gradient of blue to red (supports color codes too)
+ascii-art.default.color = gradient("blue -> yellow")
+
+# Replacing the You: <users-question> color to green as set above (supports color codes too)
+message.user.color = color("blue")
+# Replacing the MahanAI: <ai-response> color to red as set above (also supports color codes)
+message.ai.color = color("yellow")
+# Replacing the MahanAI text with my little ai so like insted of MahanAI: <ai-response> we have my little ai: <ai-response>
+message.ai.name = text("MAI")
