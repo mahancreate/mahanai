@@ -205,6 +205,34 @@ def clear_custom_theme() -> None:
     _write_config(data)
 
 
+def save_ollama_provider(name: str, address: str, port: int, api_key: str, url: str = "") -> None:
+    data = _read_config()
+    providers = data.setdefault("ollama_providers", {})
+    providers[name] = {
+        "name": name,
+        "address": address.strip(),
+        "port": int(port),
+        "api_key": api_key.strip(),
+        "url": url,
+    }
+    _write_config(data)
+
+
+def load_ollama_providers() -> dict[str, dict]:
+    return _read_config().get("ollama_providers", {})
+
+
+def remove_ollama_provider(name: str) -> None:
+    data = _read_config()
+    providers = data.get("ollama_providers", {})
+    providers.pop(name, None)
+    if providers:
+        data["ollama_providers"] = providers
+    else:
+        data.pop("ollama_providers", None)
+    _write_config(data)
+
+
 def load_always_allowed() -> dict:
     return _read_config().get("always_allowed", {})
 

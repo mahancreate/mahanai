@@ -8,6 +8,7 @@ import getpass
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -32,9 +33,11 @@ from mahanai.config import (
     load_codex_token,
     load_custom_endpoint,
     load_nvidia_api_key,
+    load_ollama_providers,
     load_theme,
     load_custom_theme_path,
     load_custom_theme_info,
+    remove_ollama_provider,
     save_custom_theme_info,
     clear_custom_theme,
     resolve_api_key,
@@ -42,6 +45,7 @@ from mahanai.config import (
     save_codex_token,
     save_custom_endpoint,
     save_nvidia_api_key,
+    save_ollama_provider,
     save_theme,
 )
 from mahanai.system_info import describe_runtime
@@ -83,6 +87,54 @@ AVAILABLE_MODELS: list[dict] = [
     {"label": "GPT-5.1-Codex-Mini",    "name": "gpt-5.1-codex-mini",         "note": "indirect", "group": "OpenAI Codex (Indirect)","mode": "codex_indirect"},
     {"label": "Custom Endpoint",        "name": "custom",                      "note": "custom",   "group": "Custom",                 "mode": "custom"},
 ]
+
+def _build_ollama_url(address: str, port: int) -> str:
+    """Build Ollama base URL: strip protocol prefix, skip port for domain addresses."""
+    addr = address.strip()
+    explicit_proto = None
+    if addr.startswith("https://"):
+        explicit_proto = "https"
+        addr = addr[len("https://"):]
+    elif addr.startswith("http://"):
+        explicit_proto = "http"
+        addr = addr[len("http://"):]
+    addr = addr.rstrip("/")
+    proto = explicit_proto or ("https" if port == 443 else "http")
+    is_ip = bool(re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", addr))
+    is_domain = "." in addr and not is_ip
+    if is_domain:
+        return f"{proto}://{addr}/api/v1"
+    return f"{proto}://{addr}:{port}/api/v1"
+
+
+def _strip_protocol(address: str) -> str:
+    """Remove http:// or https:// prefix from an address string."""
+    for prefix in ("https://", "http://"):
+        if address.startswith(prefix):
+            return address[len(prefix):].rstrip("/")
+    return address.rstrip("/")
+
+
+def _ollama_entry(name: str, address: str, port: int, api_key: str, url: str | None = None) -> dict:
+    return {
+        "label": name,
+        "name":  name,
+        "note":  "ollama",
+        "group": "Ollama",
+        "mode":  "ollama",
+        "ollama_url":     url or f"http://{address}:{port}/api/v1",
+        "ollama_api_key": api_key or "ollama",
+    }
+
+
+def _inject_ollama_providers() -> None:
+    """Load persisted Ollama providers and append them to AVAILABLE_MODELS (dedup by name)."""
+    existing_names = {m["name"] for m in AVAILABLE_MODELS if m.get("mode") == "ollama"}
+    for p in load_ollama_providers().values():
+        if p["name"] not in existing_names:
+            AVAILABLE_MODELS.append(_ollama_entry(p["name"], p["address"], p["port"], p["api_key"], p.get("url")))
+            existing_names.add(p["name"])
+
 
 from rich.console import Console
 from rich.text import Text
@@ -153,7 +205,7 @@ def _stream_direct(api_key: str, messages: list[dict[str, Any]], model: str, bas
     }
     payload = {"model": model, "messages": messages, "stream": True}
 
-    with httpx.Client(timeout=120.0) as client:
+    with httpx.Client(timeout=120.0, follow_redirects=True) as client:
         with client.stream("POST", url, headers=headers, json=payload) as response:
             response.raise_for_status()
             for line in response.iter_lines():
@@ -184,7 +236,7 @@ def _fetch_direct(api_key: str, messages: list[dict[str, Any]], model: str, base
         "Content-Type": "application/json",
     }
     payload = {"model": model, "messages": messages, "stream": False}
-    with httpx.Client(timeout=120.0) as client:
+    with httpx.Client(timeout=120.0, follow_redirects=True) as client:
         response = client.post(url, headers=headers, json=payload)
         response.raise_for_status()
         result = response.json()
@@ -801,6 +853,12 @@ def _print_help() -> None:
         f"  /codex-logout           Remove saved OpenAI Codex credentials\n"
         f"  /custom [url [model [key]]]  Configure a custom OpenAI-compatible endpoint\n"
         f"  /custom clear           Remove saved custom endpoint\n"
+        f"  /add-ollama <name> <address> <port> [key]\n"
+        f"                          Add an Ollama provider (http/https stripped,\n"
+        f"                            domain addresses omit port)\n"
+        f"  /change-ollama <name> <address> <port> [key]\n"
+        f"                          Update address/port/key of an existing provider\n"
+        f"  /remove-ollama <name>   Remove a saved Ollama provider\n"
         f"  /help  /exit  /quit{C.RST}\n"
     )
 
@@ -888,6 +946,7 @@ def main() -> None:
     plan_mode = False
     C.apply_theme(load_theme())
     _register_and_apply_saved_mai_theme()
+    _inject_ollama_providers()
     print_startup_banner(AVAILABLE_MODELS[active_model_idx]["label"], compact=compact)
     print()
 
@@ -1135,6 +1194,92 @@ def main() -> None:
                 print()
                 print(f"{C.OK}Custom theme unloaded.{C.RST}\n")
                 continue
+            if cmd == "/add-ollama":
+                parts = rest.split(None, 3)
+                if len(parts) < 3:
+                    print(
+                        f"{C.ERR}Usage:{C.RST} /add-ollama <name> <address> <port> [api_key]\n"
+                        f"{C.DIM}  e.g. /add-ollama llama3 localhost 11434{C.RST}\n"
+                    )
+                    continue
+                o_name, o_addr = parts[0], parts[1]
+                try:
+                    o_port = int(parts[2])
+                except ValueError:
+                    print(f"{C.ERR}Port must be a number.{C.RST}\n")
+                    continue
+                o_key = parts[3] if len(parts) > 3 else "ollama"
+                o_url = _build_ollama_url(o_addr, o_port)
+                o_clean = _strip_protocol(o_addr)
+                # Remove existing entry with same name so we can update it
+                for _i, _m in enumerate(AVAILABLE_MODELS):
+                    if _m.get("mode") == "ollama" and _m["name"] == o_name:
+                        AVAILABLE_MODELS.pop(_i)
+                        break
+                AVAILABLE_MODELS.append(_ollama_entry(o_name, o_clean, o_port, o_key, o_url))
+                save_ollama_provider(o_name, o_clean, o_port, o_key, o_url)
+                print(
+                    f"{C.OK}Ollama provider added:{C.RST} {o_name}  "
+                    f"{C.DIM}{o_url}{C.RST}\n"
+                    f"{C.DIM}  Use /models to switch to it.{C.RST}\n"
+                )
+                continue
+            if cmd == "/remove-ollama":
+                o_name = rest.strip()
+                if not o_name:
+                    print(f"{C.ERR}Usage:{C.RST} /remove-ollama <name>\n")
+                    continue
+                removed = False
+                for _i, _m in enumerate(AVAILABLE_MODELS):
+                    if _m.get("mode") == "ollama" and _m["name"] == o_name:
+                        AVAILABLE_MODELS.pop(_i)
+                        removed = True
+                        break
+                remove_ollama_provider(o_name)
+                if removed:
+                    print(f"{C.OK}Ollama provider '{o_name}' removed.{C.RST}\n")
+                else:
+                    print(f"{C.ERR}No Ollama provider named '{o_name}' found.{C.RST}\n")
+                continue
+            if cmd == "/change-ollama":
+                parts = rest.split(None, 3)
+                if len(parts) < 3:
+                    print(
+                        f"{C.ERR}Usage:{C.RST} /change-ollama <name> <address> <port> [api_key]\n"
+                        f"{C.DIM}  e.g. /change-ollama llama3 192.168.1.5 11434{C.RST}\n"
+                    )
+                    continue
+                o_name, o_addr = parts[0], parts[1]
+                try:
+                    o_port = int(parts[2])
+                except ValueError:
+                    print(f"{C.ERR}Port must be a number.{C.RST}\n")
+                    continue
+                o_key_arg = parts[3] if len(parts) > 3 else None
+                # Find existing entry
+                existing_idx = None
+                existing_entry = None
+                for _i, _m in enumerate(AVAILABLE_MODELS):
+                    if _m.get("mode") == "ollama" and _m["name"] == o_name:
+                        existing_idx = _i
+                        existing_entry = _m
+                        break
+                if existing_entry is None:
+                    print(
+                        f"{C.ERR}No Ollama provider named '{o_name}' found.{C.RST} "
+                        f"Use /add-ollama to create it.\n"
+                    )
+                    continue
+                o_key = o_key_arg if o_key_arg is not None else (existing_entry.get("ollama_api_key") or "ollama")
+                o_url = _build_ollama_url(o_addr, o_port)
+                o_clean = _strip_protocol(o_addr)
+                AVAILABLE_MODELS[existing_idx] = _ollama_entry(o_name, o_clean, o_port, o_key, o_url)
+                save_ollama_provider(o_name, o_clean, o_port, o_key, o_url)
+                print(
+                    f"{C.OK}Ollama provider updated:{C.RST} {o_name}  "
+                    f"{C.DIM}{o_url}{C.RST}\n"
+                )
+                continue
             if cmd == "/custom":
                 sub = rest.strip()
                 if sub.lower() == "clear":
@@ -1230,6 +1375,27 @@ def main() -> None:
                 print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
                 _run_codex_cli(effective_user, model=selected["name"])
                 print("\n")
+            continue
+
+        if selected["mode"] == "ollama":
+            history.append({"role": "user", "content": effective_user})
+            print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
+            try:
+                reply = run_turn(
+                    client,
+                    selected.get("ollama_api_key") or "ollama",
+                    selected["name"],
+                    history,
+                    workspace,
+                    selected["ollama_url"],
+                )
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                print()
+                print(f"{C.ERR}[Ollama error]{C.RST} {e}\n")
+                history.pop()
+                continue
+            print("\n")
+            history.append({"role": "assistant", "content": reply})
             continue
 
         if selected["mode"] == "custom":
