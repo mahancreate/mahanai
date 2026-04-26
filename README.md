@@ -304,9 +304,43 @@ Switch models interactively with `/models` (arrow-key selector) or quick-switch 
 
 > **Default model:** MahanAI starts on **Claude Haiku 4.5** out of the box.
 
+### Ollama
+
+Run local models via any Ollama-compatible server. Each provider is saved to config and appears as its own named entry in `/models`.
+
+```
+/add-ollama <name> <address> <port> [api_key]
+```
+
+Examples:
+```
+/add-ollama llama3   localhost        11434
+/add-ollama mistral  192.168.1.100    11434
+/add-ollama cloud    https://my.server.com  443
+```
+
+**Smart URL rules applied automatically:**
+- `http://` / `https://` prefixes are stripped from the address and the correct scheme is re-applied
+- Port `443` with no explicit scheme → `https://` is used automatically
+- Domain addresses (e.g. `my.server.com`) → port is omitted from the URL; local IPs and `localhost` keep the port
+
+Resulting base URL is always `<scheme>://<host>[:<port>]/api/v1`.
+
+**Update an existing provider** (keeps the current API key if none given):
+```
+/change-ollama <name> <new-address> <new-port> [new_api_key]
+```
+
+**Remove a provider:**
+```
+/remove-ollama <name>
+```
+
+After adding, open `/models` and select the provider by name to start chatting. Providers persist across sessions.
+
 ### Custom Endpoint
 
-Point MahanAI at any OpenAI-compatible API (Ollama, LM Studio, vLLM, OpenRouter, etc.):
+Point MahanAI at any OpenAI-compatible API (LM Studio, vLLM, OpenRouter, etc.):
 
 ```
 /custom http://localhost:11434/v1 llama3 [optional-api-key]
@@ -340,6 +374,9 @@ Once saved, select **Custom Endpoint** from `/models` to start using it. The con
 | `/codex-logout` | Remove saved OpenAI Codex credentials |
 | `/custom [url [model [key]]]` | Configure a custom OpenAI-compatible endpoint |
 | `/custom clear` | Remove saved custom endpoint |
+| `/add-ollama <name> <addr> <port> [key]` | Add an Ollama provider to the model list |
+| `/change-ollama <name> <addr> <port> [key]` | Update address/port/key of an existing Ollama provider |
+| `/remove-ollama <name>` | Remove a saved Ollama provider |
 | `/help` | Show help |
 | `/exit` or `/quit` | Leave |
 
