@@ -788,10 +788,184 @@ def run_turn(
 
 
 
+_SPECIAL_FILE_EMOJIS: dict[str, str] = {
+    # exact filenames
+    "MAHANAI.md":        "🤖",
+    "CLAUDE.md":         "🤖",
+    "README.md":         "📖",
+    "readme.md":         "📖",
+    ".gitignore":        "🐙",
+    ".env":              "🔒",
+    ".env.local":        "🔒",
+    "Dockerfile":        "🐳",
+    "docker-compose.yml":"🐳",
+    "docker-compose.yaml":"🐳",
+    "pyproject.toml":    "⚙️",
+    "setup.py":          "⚙️",
+    "setup.cfg":         "⚙️",
+    "requirements.txt":  "📦",
+    "package.json":      "📦",
+    "package-lock.json": "📦",
+    "Cargo.toml":        "📦",
+    "go.mod":            "📦",
+    "Makefile":          "🔨",
+    ".cursor":           "🖱️",
+    # extensions
+    ".mai":              "🎨",
+    ".sh":               "⚡",
+    ".bat":              "⚡",
+    ".ps1":              "⚡",
+}
+
+
+def _file_emoji(name: str) -> str:
+    if name in _SPECIAL_FILE_EMOJIS:
+        return _SPECIAL_FILE_EMOJIS[name]
+    ext = Path(name).suffix
+    if ext in _SPECIAL_FILE_EMOJIS:
+        return _SPECIAL_FILE_EMOJIS[ext]
+    return "📄"
+
+
+def _generate_mahanai_md(workspace: Path) -> str:
+    """Scan workspace and produce a structured MAHANAI.md template."""
+    import collections
+
+    _LANG_BY_EXT: dict[str, str] = {
+        ".py": "Python", ".js": "JavaScript", ".ts": "TypeScript",
+        ".rs": "Rust", ".go": "Go", ".java": "Java", ".cpp": "C++",
+        ".c": "C", ".cs": "C#", ".rb": "Ruby", ".php": "PHP",
+        ".swift": "Swift", ".kt": "Kotlin", ".sh": "Shell", ".lua": "Lua",
+        ".zig": "Zig", ".ex": "Elixir", ".exs": "Elixir", ".ml": "OCaml",
+    }
+    _KEY_FILES = {
+        "pyproject.toml", "setup.py", "requirements.txt",
+        "package.json", "Cargo.toml", "go.mod", "CMakeLists.txt",
+        "Makefile", "Dockerfile", "docker-compose.yml", "docker-compose.yaml",
+        ".gitignore", "README.md",
+    }
+
+    ext_counts: dict[str, int] = collections.Counter()
+    found_key: list[str] = []
+    dirs: list[str] = []
+
+    def _walk(path: Path, depth: int = 0) -> None:
+        if depth > 3:
+            return
+        try:
+            for e in path.iterdir():
+                if e.name.startswith(".") and e.name not in _KEY_FILES:
+                    continue
+                if e.name in ("__pycache__", "node_modules", ".git", "dist", "build", ".venv", "venv"):
+                    continue
+                if e.is_dir():
+                    if depth == 0:
+                        dirs.append(e.name)
+                    _walk(e, depth + 1)
+                elif e.is_file():
+                    if e.name in _KEY_FILES and depth == 0:
+                        found_key.append(e.name)
+                    if e.suffix:
+                        ext_counts[e.suffix.lower()] += 1
+        except PermissionError:
+            pass
+
+    _walk(workspace)
+
+    langs = sorted(
+        [(cnt, _LANG_BY_EXT[ext]) for ext, cnt in ext_counts.items() if ext in _LANG_BY_EXT],
+        reverse=True,
+    )
+    lang_list = ", ".join(lang for _, lang in langs[:4]) if langs else "N/A"
+    dirs_str = ", ".join(f"`{d}`" for d in sorted(dirs)[:8]) if dirs else "N/A"
+    project_name = workspace.name
+
+    lines: list[str] = [
+        f"# {project_name}",
+        "",
+        "## Overview",
+        "> _Describe what this project does in 1–2 sentences._",
+        "",
+        "## Tech Stack",
+        f"- **Language(s):** {lang_list}",
+    ]
+
+    if "package.json" in found_key:
+        lines.append("- **Runtime:** Node.js")
+    if "pyproject.toml" in found_key or "setup.py" in found_key:
+        lines.append("- **Packaging:** Python (setuptools / pyproject)")
+    if "requirements.txt" in found_key:
+        lines.append("- **Dependencies:** requirements.txt")
+    if "Cargo.toml" in found_key:
+        lines.append("- **Build:** Cargo (Rust)")
+    if "go.mod" in found_key:
+        lines.append("- **Build:** Go modules")
+    if "CMakeLists.txt" in found_key:
+        lines.append("- **Build:** CMake")
+    if "Makefile" in found_key:
+        lines.append("- **Build:** Make")
+    if "Dockerfile" in found_key or "docker-compose.yml" in found_key or "docker-compose.yaml" in found_key:
+        lines.append("- **Container:** Docker")
+
+    lines += [
+        "",
+        "## Project Structure",
+        f"Key directories: {dirs_str}",
+        "",
+        "## Development",
+        "",
+        "### Setup",
+        "```sh",
+        "# Add setup / install commands here",
+        "```",
+        "",
+        "### Running",
+        "```sh",
+        "# Add run / start commands here",
+        "```",
+        "",
+        "### Testing",
+        "```sh",
+        "# Add test commands here",
+        "```",
+        "",
+        "## Notes for MahanAI",
+        "> _Add project-specific conventions, constraints, or context here._",
+        "> _This file is read automatically as project context by all non-Claude providers._",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _show_fileslist(workspace: Path) -> None:
+    try:
+        entries = sorted(workspace.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+    except PermissionError:
+        print(f"{C.ERR}Cannot read directory.{C.RST}\n")
+        return
+
+    print(f"\n{C.DIM}{workspace.resolve()}{C.RST}\n")
+    for entry in entries:
+        if entry.is_dir():
+            print(f"  📁 {C.OK}{entry.name}/{C.RST}")
+            try:
+                sub_entries = sorted(entry.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+                for sub in sub_entries:
+                    if sub.is_dir():
+                        print(f"      📁 {C.DIM}{sub.name}/{C.RST}")
+                    else:
+                        print(f"      {_file_emoji(sub.name)} {C.DIM}{sub.name}{C.RST}")
+            except PermissionError:
+                print(f"      {C.DIM}(permission denied){C.RST}")
+        else:
+            print(f"  {_file_emoji(entry.name)} {entry.name}")
+    print()
+
+
 def build_system_prompt(workspace: Path) -> str:
     env_line = describe_runtime()
     comspec = os.environ.get("ComSpec", "cmd.exe")
-    return (
+    base = (
         "You are MahanAI, a capable coding and system assistant (Super 2.0). "
         f"{env_line} "
         f"The process working directory (workspace root for file tools) is: "
@@ -812,6 +986,15 @@ def build_system_prompt(workspace: Path) -> str:
         "Tiger (1.0–7.0, 2011–2020) and Finale (1.0–3.0, 2020–2023) eras. You represent the most "
         "advanced, integrated, and capable form of the system."
     )
+    mahanai_md = workspace / "MAHANAI.md"
+    if mahanai_md.is_file():
+        try:
+            content = mahanai_md.read_text(encoding="utf-8").strip()
+            if content:
+                base += f"\n\n--- Project Context (MAHANAI.md) ---\n{content}\n---"
+        except Exception:
+            pass
+    return base
 
 
 def _slash_command(line: str) -> tuple[str, str]:
@@ -859,6 +1042,9 @@ def _print_help() -> None:
         f"  /change-ollama <name> <address> <port> [key]\n"
         f"                          Update address/port/key of an existing provider\n"
         f"  /remove-ollama <name>   Remove a saved Ollama provider\n"
+        f"  /fileslist              Show workspace files and folders with emoji icons\n"
+        f"                          (MAHANAI.md 🤖  .mai 🎨  folders 📁  files 📄)\n"
+        f"  /init                   Generate a MAHANAI.md for the current workspace\n"
         f"  /help  /exit  /quit{C.RST}\n"
     )
 
@@ -960,6 +1146,9 @@ def main() -> None:
             f"{C.ERR}No API key yet.{C.RST} Use {C.OK}/api-key{C.RST} or set "
             f"{C.DIM}MAHANAI_API_KEY{C.RST} / .env\n"
         )
+
+    if (workspace / "MAHANAI.md").is_file():
+        print(f"{C.OK}🤖 MAHANAI.md{C.RST} {C.DIM}loaded as project context for all providers.{C.RST}\n")
 
     model = os.environ.get("MAHANAI_MODEL", DEFAULT_MODEL)
 
@@ -1310,6 +1499,26 @@ def main() -> None:
                     f"{C.OK}Custom endpoint saved.{C.RST} "
                     f"{C.DIM}URL={c_url}  model={c_model}{C.RST}\n"
                     f"{C.DIM}  Use /models to switch to 'Custom Endpoint'.{C.RST}\n"
+                )
+                continue
+            if cmd == "/fileslist":
+                _show_fileslist(workspace)
+                continue
+            if cmd == "/init":
+                mahanai_md_path = workspace / "MAHANAI.md"
+                if mahanai_md_path.is_file():
+                    print(
+                        f"{C.WARN}MAHANAI.md already exists.{C.RST} "
+                        f"{C.DIM}Delete it first to regenerate, or edit it directly.{C.RST}\n"
+                    )
+                    continue
+                print(f"{C.DIM}Scanning workspace...{C.RST}")
+                md_content = _generate_mahanai_md(workspace)
+                mahanai_md_path.write_text(md_content, encoding="utf-8")
+                print(
+                    f"{C.OK}🤖 MAHANAI.md created.{C.RST}\n"
+                    f"{C.DIM}  Edit it to fill in project details — it's loaded automatically\n"
+                    f"  as context for all non-Claude providers.{C.RST}\n"
                 )
                 continue
             print(f"{C.ERR}Unknown command.{C.RST} Try {C.DIM}/help{C.RST}\n")
