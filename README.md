@@ -201,6 +201,75 @@ ascii-art.default.color = gradient("#ff0000 -> #0000ff")
 
 ---
 
+## Auto-Update
+
+MahanAI checks PyPI for a newer version on every startup (non-blocking, 2.5 s timeout). If one is found, a notice is printed after the banner:
+
+```
+Update available: v4.9.0 → v5.0.0  pip install --upgrade mahanai
+```
+
+No action is taken automatically — update when you're ready.
+
+---
+
+## Plugins (.mmd files)
+
+MahanAI supports plugins written in `.mmd` files (the **Mahmod** plugin format). Plugins can register new slash commands that delegate work to Claude CLI, MahanAI itself, or the shell.
+
+### Loading a plugin
+
+```
+/plugin-load path/to/example-mahanai-mahmod.mmd
+```
+
+Once loaded, the plugin's commands are immediately available and persist across sessions.
+
+### Plugin commands
+
+| Command | Description |
+|---|---|
+| `/plugin-load <path>` | Load a `.mmd` plugin file |
+| `/plugin-list` | Show all loaded plugins and their registered commands |
+| `/plugin-unload <name>` | Unload a plugin by name |
+
+### .mmd file syntax
+
+```
+# Import the MahanAI dev kit
+import mahanai from maidevkit
+
+plugin.version = 1.0.0
+
+# Register a new slash command
+add command("/compact", if fail create(status = 1)) {
+    import provider-features from pvd
+
+    # Delegate to Claude Code's /compact command
+    pvd(claude-code)[
+        use-claude-cmd("/compact")
+    ]
+}
+
+end-script(status)
+```
+
+#### Supported action types inside a command block
+
+| Syntax | Effect |
+|---|---|
+| `pvd(claude-code)[ use-claude-cmd("/cmd") ]` | Run a Claude CLI slash command |
+| `pvd(mahanai)[ run("/cmd") ]` | Run a MahanAI built-in slash command |
+| `shell("command")` | Run a shell command |
+
+#### Naming convention
+
+Plugin files follow the pattern `example-mahanai-<name>.mmd` or `mahanai-<name>.mmd`. The `<name>` part becomes the plugin's identifier used in `/plugin-unload`.
+
+`.mmd` files appear with a 🔌 icon in `/fileslist`.
+
+---
+
 ## Command Approvals
 
 Every tool action MahanAI takes on your behalf requires explicit approval before it runs. The prompt style depends on the action type:
@@ -377,6 +446,11 @@ Once saved, select **Custom Endpoint** from `/models` to start using it. The con
 | `/add-ollama <name> <addr> <port> [key]` | Add an Ollama provider to the model list |
 | `/change-ollama <name> <addr> <port> [key]` | Update address/port/key of an existing Ollama provider |
 | `/remove-ollama <name>` | Remove a saved Ollama provider |
+| `/fileslist` | Show workspace files and folders with emoji icons |
+| `/init` | Generate a `MAHANAI.md` context file for the current workspace |
+| `/plugin-load <path>` | Load a `.mmd` plugin file |
+| `/plugin-list` | Show all loaded plugins and their registered commands |
+| `/plugin-unload <name>` | Unload a plugin by name |
 | `/help` | Show help |
 | `/exit` or `/quit` | Leave |
 
