@@ -233,6 +233,28 @@ def remove_ollama_provider(name: str) -> None:
     _write_config(data)
 
 
+def save_plugin(name: str, path: str) -> None:
+    data = _read_config()
+    plugins = data.setdefault("plugins", {})
+    plugins[name] = {"name": name, "path": path}
+    _write_config(data)
+
+
+def load_plugins() -> dict[str, dict]:
+    return _read_config().get("plugins", {})
+
+
+def remove_plugin(name: str) -> None:
+    data = _read_config()
+    plugins = data.get("plugins", {})
+    plugins.pop(name, None)
+    if plugins:
+        data["plugins"] = plugins
+    else:
+        data.pop("plugins", None)
+    _write_config(data)
+
+
 def load_always_allowed() -> dict:
     return _read_config().get("always_allowed", {})
 

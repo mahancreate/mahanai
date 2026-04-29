@@ -12,6 +12,7 @@ import re
 import secrets
 import shutil
 import subprocess
+import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -34,10 +35,12 @@ from mahanai.config import (
     load_custom_endpoint,
     load_nvidia_api_key,
     load_ollama_providers,
+    load_plugins,
     load_theme,
     load_custom_theme_path,
     load_custom_theme_info,
     remove_ollama_provider,
+    remove_plugin,
     save_custom_theme_info,
     clear_custom_theme,
     resolve_api_key,
@@ -46,10 +49,66 @@ from mahanai.config import (
     save_custom_endpoint,
     save_nvidia_api_key,
     save_ollama_provider,
+    save_plugin,
     save_theme,
 )
+from mahanai.mmd_parser import MmdPlugin, parse_mmd_file
 from mahanai.system_info import describe_runtime
 from mahanai.tools import TOOLS, execute_tool, normalize_tool_arguments_json
+
+# ── Plugin registry ───────────────────────────────────────────────────────────
+_LOADED_PLUGINS: dict[str, MmdPlugin] = {}  # name → MmdPlugin
+
+
+def _inject_saved_plugins() -> None:
+    """Load persisted .mmd plugins from config on startup."""
+    for entry in load_plugins().values():
+        p = entry.get("path", "")
+        try:
+            plugin = parse_mmd_file(p)
+            _LOADED_PLUGINS[plugin.name] = plugin
+        except Exception:
+            pass
+
+
+# ── Auto-update check ─────────────────────────────────────────────────────────
+_update_check: dict[str, str] = {}
+
+
+def _fetch_latest_version() -> None:
+    try:
+        resp = httpx.get("https://pypi.org/pypi/mahanai/json", timeout=3.0)
+        if resp.status_code == 200:
+            _update_check["latest"] = resp.json()["info"]["version"]
+    except Exception:
+        pass
+
+
+def _start_update_check() -> threading.Thread:
+    t = threading.Thread(target=_fetch_latest_version, daemon=True)
+    t.start()
+    return t
+
+
+def _version_tuple(v: str) -> tuple:
+    try:
+        return tuple(int(x) for x in v.split("."))
+    except ValueError:
+        return (0,)
+
+
+def _print_update_notice(thread: threading.Thread) -> None:
+    thread.join(timeout=2.5)
+    latest = _update_check.get("latest")
+    if not latest:
+        return
+    if _version_tuple(latest) > _version_tuple(__version__):
+        print(
+            f"{C.WARN}Update available:{C.RST} {C.DIM}v{__version__}{C.RST} → "
+            f"{C.OK}v{latest}{C.RST}  "
+            f"{C.DIM}pip install --upgrade mahanai{C.RST}\n"
+        )
+
 
 NVIDIA_BASE_URL = "http://89.167.0.111:8000/v1"
 DEFAULT_MODEL = "mahanai/mahanai"
@@ -812,6 +871,7 @@ _SPECIAL_FILE_EMOJIS: dict[str, str] = {
     ".cursor":           "🖱️",
     # extensions
     ".mai":              "🎨",
+    ".mmd":              "🔌",
     ".sh":               "⚡",
     ".bat":              "⚡",
     ".ps1":              "⚡",
@@ -1043,8 +1103,11 @@ def _print_help() -> None:
         f"                          Update address/port/key of an existing provider\n"
         f"  /remove-ollama <name>   Remove a saved Ollama provider\n"
         f"  /fileslist              Show workspace files and folders with emoji icons\n"
-        f"                          (MAHANAI.md 🤖  .mai 🎨  folders 📁  files 📄)\n"
+        f"                          (MAHANAI.md 🤖  .mai 🎨  .mmd 🔌  folders 📁)\n"
         f"  /init                   Generate a MAHANAI.md for the current workspace\n"
+        f"  /plugin-load <path>     Load a .mmd plugin file\n"
+        f"  /plugin-list            Show all loaded plugins and their commands\n"
+        f"  /plugin-unload <name>   Unload a plugin by name\n"
         f"  /help  /exit  /quit{C.RST}\n"
     )
 
@@ -1133,8 +1196,11 @@ def main() -> None:
     C.apply_theme(load_theme())
     _register_and_apply_saved_mai_theme()
     _inject_ollama_providers()
+    _inject_saved_plugins()
+    _update_thread = _start_update_check()
     print_startup_banner(AVAILABLE_MODELS[active_model_idx]["label"], compact=compact)
     print()
+    _print_update_notice(_update_thread)
 
     if nvidia_api_key:
         print(
@@ -1520,6 +1586,84 @@ def main() -> None:
                     f"{C.DIM}  Edit it to fill in project details — it's loaded automatically\n"
                     f"  as context for all non-Claude providers.{C.RST}\n"
                 )
+                continue
+            if cmd == "/plugin-load":
+                _ppath = rest.strip()
+                if not _ppath:
+                    print(f"{C.ERR}Usage: /plugin-load <path-to-file.mmd>{C.RST}\n")
+                    continue
+                from pathlib import Path as _Path
+                _pp = _Path(_ppath).expanduser().resolve()
+                if not _pp.is_file():
+                    print(f"{C.ERR}File not found: {_ppath}{C.RST}\n")
+                    continue
+                if _pp.suffix.lower() != ".mmd":
+                    print(f"{C.ERR}Not a .mmd file: {_ppath}{C.RST}\n")
+                    continue
+                try:
+                    _plugin = parse_mmd_file(_pp)
+                    _LOADED_PLUGINS[_plugin.name] = _plugin
+                    save_plugin(_plugin.name, str(_pp))
+                    _triggers = ", ".join(_plugin.command_triggers()) or "(none)"
+                    print(
+                        f"{C.OK}🔌 Plugin loaded:{C.RST} {_plugin.name}  "
+                        f"{C.DIM}v{_plugin.version}{C.RST}\n"
+                        f"{C.DIM}  Commands: {_triggers}{C.RST}\n"
+                    )
+                except Exception as _e:
+                    print(f"{C.ERR}Failed to load plugin: {_e}{C.RST}\n")
+                continue
+            if cmd == "/plugin-list":
+                if not _LOADED_PLUGINS:
+                    print(f"{C.DIM}No plugins loaded.{C.RST}\n")
+                else:
+                    print(f"{C.DIM}Loaded plugins:{C.RST}")
+                    for _pl in _LOADED_PLUGINS.values():
+                        _triggers = ", ".join(_pl.command_triggers()) or "(none)"
+                        print(f"  {C.OK}🔌 {_pl.name}{C.RST}  {C.DIM}v{_pl.version}  commands: {_triggers}{C.RST}")
+                    print()
+                continue
+            if cmd == "/plugin-unload":
+                _pname = rest.strip()
+                if not _pname:
+                    print(f"{C.ERR}Usage: /plugin-unload <name>{C.RST}\n")
+                    continue
+                if _pname in _LOADED_PLUGINS:
+                    del _LOADED_PLUGINS[_pname]
+                    remove_plugin(_pname)
+                    print(f"{C.OK}Plugin '{_pname}' unloaded.{C.RST}\n")
+                else:
+                    print(f"{C.ERR}No plugin named '{_pname}' found.{C.RST}\n")
+                continue
+            # Check if the command matches a loaded plugin command
+            _plugin_handled = False
+            for _pl in _LOADED_PLUGINS.values():
+                for _pcmd in _pl.commands:
+                    if cmd == _pcmd.trigger:
+                        _plugin_handled = True
+                        for _action in _pcmd.actions:
+                            if _action.type == "claude-cmd":
+                                print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
+                                _run_claude_cli(_action.value)
+                                print("\n")
+                            elif _action.type == "mahanai-cmd":
+                                # Reprocess as an internal slash command
+                                user = _action.value
+                            elif _action.type == "shell-cmd":
+                                import subprocess as _sp
+                                try:
+                                    _res = _sp.run(
+                                        _action.value, shell=True, capture_output=True, text=True, timeout=30
+                                    )
+                                    out = (_res.stdout + _res.stderr).strip()
+                                    if out:
+                                        print(out)
+                                except Exception as _se:
+                                    print(f"{C.ERR}Plugin shell error: {_se}{C.RST}")
+                        break
+                if _plugin_handled:
+                    break
+            if _plugin_handled:
                 continue
             print(f"{C.ERR}Unknown command.{C.RST} Try {C.DIM}/help{C.RST}\n")
             continue
