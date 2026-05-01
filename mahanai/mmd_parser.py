@@ -24,6 +24,9 @@ class MmdPlugin:
     name: str
     path: str
     version: str = "1.0"
+    codename: str = ""
+    reg_store: str = ""
+    reg_name: str = ""
     commands: list[MmdCommand] = field(default_factory=list)
 
     def command_triggers(self) -> list[str]:
@@ -45,10 +48,25 @@ def parse_mmd_file(path: str | Path) -> MmdPlugin:
 
     plugin = MmdPlugin(name=_derive_name(path.stem), path=str(path))
 
+    def _str_val(pattern: str) -> str:
+        m = re.search(pattern, text, re.MULTILINE)
+        if not m:
+            return ""
+        return m.group(1).strip().strip('"').strip("'")
+
+    # plugin.name overrides the filename-derived name
+    explicit_name = _str_val(r'^plugin\.name\s*=\s*(.+)$')
+    if explicit_name:
+        plugin.name = explicit_name
+
     # Extract version if declared: plugin.version = 1.2.3
     ver_m = re.search(r'^plugin\.version\s*=\s*(.+)$', text, re.MULTILINE)
     if ver_m:
         plugin.version = ver_m.group(1).strip()
+
+    plugin.codename = _str_val(r'^plugin\.codename\s*=\s*(.+)$')
+    plugin.reg_store = _str_val(r'^plugin\.reg\.store\s*=\s*(.+)$')
+    plugin.reg_name  = _str_val(r'^plugin\.reg\.name\s*=\s*(.+)$')
 
     # Parse: add command("/trigger", ...) { ... }
     # The arg list may contain nested parens like `if fail create(status = 1)`,

@@ -233,10 +233,10 @@ def remove_ollama_provider(name: str) -> None:
     _write_config(data)
 
 
-def save_plugin(name: str, path: str) -> None:
+def save_plugin(name: str, path: str, codename: str = "", reg_store: str = "", reg_name: str = "") -> None:
     data = _read_config()
     plugins = data.setdefault("plugins", {})
-    plugins[name] = {"name": name, "path": path}
+    plugins[name] = {"name": name, "path": path, "codename": codename, "reg_store": reg_store, "reg_name": reg_name}
     _write_config(data)
 
 

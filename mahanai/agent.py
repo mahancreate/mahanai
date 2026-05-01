@@ -1108,6 +1108,12 @@ def _print_help() -> None:
         f"  /plugin-load <path>     Load a .mmd plugin file\n"
         f"  /plugin-list            Show all loaded plugins and their commands\n"
         f"  /plugin-unload <name>   Unload a plugin by name\n"
+        f"  /store login <token>    Link your GitHub account to the plugin store\n"
+        f"  /store logout           Unlink GitHub account\n"
+        f"  /store browse           Browse all published plugins\n"
+        f"  /store search <query>   Search plugins\n"
+        f"  /store install <id>     Download and install a plugin\n"
+        f"  /store upload <path>    Publish your .mmd plugin to the store\n"
         f"  /help  /exit  /quit{C.RST}\n"
     )
 
@@ -1587,6 +1593,107 @@ def main() -> None:
                     f"  as context for all non-Claude providers.{C.RST}\n"
                 )
                 continue
+            if cmd == "/store":
+                from . import store as _store
+                _sub, _, _srest = rest.strip().partition(" ")
+                _sub = _sub.lower()
+                _srest = _srest.strip()
+
+                if _sub == "login":
+                    _tok = _srest.strip()
+                    if not _tok:
+                        print(f"{C.ERR}Usage: /store login <github-personal-access-token>{C.RST}\n")
+                    else:
+                        try:
+                            _gh_user = _store.whoami(_tok)
+                            _store.save_store_token(_tok)
+                            print(f"{C.OK}Logged in to GitHub as:{C.RST} {_gh_user}\n")
+                        except Exception as _se:
+                            print(f"{C.ERR}Login failed: {_se}{C.RST}\n")
+
+                elif _sub == "logout":
+                    _store.remove_store_token()
+                    print(f"{C.OK}GitHub account unlinked from store.{C.RST}\n")
+
+                elif _sub in ("browse", "search", ""):
+                    _query = _srest if _sub in ("search", "browse") else ""
+                    _stok = _store.get_store_token()
+                    try:
+                        _items = _store.search_plugins(_query, token=_stok)
+                        if not _items:
+                            print(f"{C.DIM}No plugins found{' for: ' + _query if _query else ''}.{C.RST}\n")
+                        else:
+                            _label = f"Results for '{_query}'" if _query else "Available plugins"
+                            print(f"{C.DIM}{_label}:{C.RST}")
+                            for _it in _items:
+                                _desc = _it.get('description') or ''
+                                print(
+                                    f"  {C.OK}🔌 {_it['full_name']}{C.RST}"
+                                    + (f"  {C.DIM}{_desc}{C.RST}" if _desc else "")
+                                )
+                            print(f"\n{C.DIM}Install with: /store install <user/codename>{C.RST}\n")
+                    except Exception as _se:
+                        print(f"{C.ERR}Store error: {_se}{C.RST}\n")
+
+                elif _sub == "install":
+                    _target = _srest.strip()
+                    if not _target:
+                        print(f"{C.ERR}Usage: /store install <user/codename>  or  /store install <codename>{C.RST}\n")
+                    else:
+                        _stok = _store.get_store_token()
+                        try:
+                            _repo = _target if "/" in _target else _store.find_plugin_repo(_target, token=_stok)
+                            if not _repo:
+                                print(f"{C.ERR}Plugin '{_target}' not found in store.{C.RST}\n")
+                            else:
+                                print(f"{C.DIM}Downloading {_repo}...{C.RST}")
+                                from pathlib import Path as _Path
+                                _mmd_path = _store.install_plugin(_repo, token=_stok)
+                                _plugin = parse_mmd_file(_mmd_path)
+                                _LOADED_PLUGINS[_plugin.name] = _plugin
+                                save_plugin(_plugin.name, str(_mmd_path), _plugin.codename, _plugin.reg_store, _plugin.reg_name)
+                                _triggers = ", ".join(_plugin.command_triggers()) or "(none)"
+                                print(
+                                    f"{C.OK}🔌 Installed:{C.RST} {_plugin.name}  "
+                                    f"{C.DIM}v{_plugin.version}  commands: {_triggers}{C.RST}\n"
+                                )
+                        except Exception as _se:
+                            print(f"{C.ERR}Install failed: {_se}{C.RST}\n")
+
+                elif _sub == "upload":
+                    _up_path = _srest.strip()
+                    if not _up_path:
+                        print(f"{C.ERR}Usage: /store upload <path-to-file.mmd>{C.RST}\n")
+                    else:
+                        _stok = _store.get_store_token()
+                        if not _stok:
+                            print(f"{C.ERR}Not logged in. Run: /store login <github-token>{C.RST}\n")
+                        else:
+                            from pathlib import Path as _Path
+                            _up_pp = _Path(_up_path).expanduser().resolve()
+                            if not _up_pp.is_file():
+                                print(f"{C.ERR}File not found: {_up_path}{C.RST}\n")
+                            elif _up_pp.suffix.lower() != ".mmd":
+                                print(f"{C.ERR}Not a .mmd file: {_up_path}{C.RST}\n")
+                            else:
+                                try:
+                                    _repo_url = _store.upload_plugin(_stok, _up_pp)
+                                    print(f"{C.OK}Plugin published:{C.RST} {_repo_url}\n")
+                                except Exception as _se:
+                                    print(f"{C.ERR}Upload failed: {_se}{C.RST}\n")
+
+                else:
+                    print(
+                        f"{C.DIM}Store commands:{C.RST}\n"
+                        f"  /store login <token>       Link your GitHub account\n"
+                        f"  /store logout              Unlink GitHub account\n"
+                        f"  /store browse              Browse all available plugins\n"
+                        f"  /store search <query>      Search plugins by name/keyword\n"
+                        f"  /store install <user/id>   Download and install a plugin\n"
+                        f"  /store upload <path>       Publish your .mmd to the store\n"
+                    )
+                continue
+
             if cmd == "/plugin-load":
                 _ppath = rest.strip()
                 if not _ppath:
@@ -1603,7 +1710,7 @@ def main() -> None:
                 try:
                     _plugin = parse_mmd_file(_pp)
                     _LOADED_PLUGINS[_plugin.name] = _plugin
-                    save_plugin(_plugin.name, str(_pp))
+                    save_plugin(_plugin.name, str(_pp), _plugin.codename, _plugin.reg_store, _plugin.reg_name)
                     _triggers = ", ".join(_plugin.command_triggers()) or "(none)"
                     print(
                         f"{C.OK}🔌 Plugin loaded:{C.RST} {_plugin.name}  "
@@ -1620,7 +1727,9 @@ def main() -> None:
                     print(f"{C.DIM}Loaded plugins:{C.RST}")
                     for _pl in _LOADED_PLUGINS.values():
                         _triggers = ", ".join(_pl.command_triggers()) or "(none)"
-                        print(f"  {C.OK}🔌 {_pl.name}{C.RST}  {C.DIM}v{_pl.version}  commands: {_triggers}{C.RST}")
+                        _codename_str = f"  [{_pl.codename}]" if _pl.codename else ""
+                        _reg_str = f"  {_pl.reg_name}" if _pl.reg_name else ""
+                        print(f"  {C.OK}🔌 {_pl.name}{C.RST}{_codename_str}  {C.DIM}v{_pl.version}{_reg_str}  commands: {_triggers}{C.RST}")
                     print()
                 continue
             if cmd == "/plugin-unload":

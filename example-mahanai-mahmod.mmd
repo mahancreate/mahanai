@@ -1,6 +1,11 @@
 # import mahanai dev kit from dev kit
 import mahanai from maidevkit
 
+plugin.name = "Example MahMod"
+plugin.codename = "maifoundation.example.mahmod"
+plugin.reg.store = "mai-foundation"
+plugin.reg.name = "MahanAI Foundation"
+
 # add a reciver to add the command /compact
 add command("/compact",if fail create(status = 1)){
 	# iimporting provider features from pvd

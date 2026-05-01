@@ -239,7 +239,14 @@ Once loaded, the plugin's commands are immediately available and persist across 
 # Import the MahanAI dev kit
 import mahanai from maidevkit
 
-plugin.version = 1.0.0
+# Plugin identity (required for store upload)
+plugin.name     = "My Plugin"
+plugin.codename = "mystore.my-plugin"
+plugin.version  = 1.0.0
+
+# Store / registry metadata
+plugin.reg.store = "my-store"           # which store this belongs to
+plugin.reg.name  = "My Store"           # human-readable store name (optional)
 
 # Register a new slash command
 add command("/compact", if fail create(status = 1)) {
@@ -254,6 +261,16 @@ add command("/compact", if fail create(status = 1)) {
 end-script(status)
 ```
 
+#### Plugin identity fields
+
+| Field | Required for store | Description |
+|---|---|---|
+| `plugin.name` | Yes | Display name shown in `/plugin-list`. Overrides the filename-derived name. |
+| `plugin.codename` | Yes | Unique dotted identifier — also becomes the GitHub repo name on upload. |
+| `plugin.version` | No | Semantic version shown in `/plugin-list`. |
+| `plugin.reg.store` | Yes | Store slug the plugin is published to (e.g. `mai-foundation`). Added as a GitHub topic. |
+| `plugin.reg.name` | No | Human-readable registry name shown in `/plugin-list`. |
+
 #### Supported action types inside a command block
 
 | Syntax | Effect |
@@ -264,9 +281,87 @@ end-script(status)
 
 #### Naming convention
 
-Plugin files follow the pattern `example-mahanai-<name>.mmd` or `mahanai-<name>.mmd`. The `<name>` part becomes the plugin's identifier used in `/plugin-unload`.
+Plugin files follow the pattern `example-mahanai-<name>.mmd` or `mahanai-<name>.mmd`. The `<name>` part is used as a fallback identifier if `plugin.name` is not declared.
 
 `.mmd` files appear with a 🔌 icon in `/fileslist`.
+
+---
+
+## Plugin Store
+
+The MahanAI plugin store lets you publish your own `.mmd` plugins and install plugins made by others. The store is backed by GitHub — each plugin lives in a public repo named `<your-username>/<plugin.codename>` and is discoverable via the `mahanai-plugin` GitHub topic.
+
+### Linking your GitHub account
+
+Generate a [GitHub Personal Access Token](https://github.com/settings/tokens) with **repo** scope (needed to create and push to repos), then:
+
+```
+/store login <your-github-token>
+```
+
+Your token is saved to `config.json`. Browsing and installing work without a token; uploading requires one.
+
+```
+/store logout    # remove the stored token
+```
+
+### Browsing and searching
+
+```
+/store browse              # list all published mahanai-plugin repos
+/store search compact      # search by keyword
+```
+
+Each result shows the repo's full name (`user/codename`) and description. Results are sorted by most recently updated.
+
+### Installing a plugin
+
+```
+/store install mahancreate/maifoundation.example.mahmod
+```
+
+If you know the codename but not the author, the store will search for it automatically:
+
+```
+/store install maifoundation.example.mahmod
+```
+
+The `.mmd` file is downloaded to `~/.config/mahanai/store-plugins/`, parsed, and loaded immediately — the plugin's commands are available right away and persist across sessions.
+
+### Publishing a plugin
+
+Your `.mmd` file must declare `plugin.name`, `plugin.codename`, and `plugin.reg.store` before upload:
+
+```
+plugin.name      = "Example MahMod"
+plugin.codename  = "maifoundation.example.mahmod"
+plugin.reg.store = "mai-foundation"
+```
+
+Then publish:
+
+```
+/store upload path/to/your-plugin.mmd
+```
+
+This will:
+1. Create a public GitHub repo named `<you>/<plugin.codename>` (or update it if it already exists)
+2. Push the `.mmd` file with a publish commit
+3. Tag the repo with the `mahanai-plugin` topic so it appears in `/store browse`
+4. Tag the repo with your `plugin.reg.store` value as an additional topic
+5. Print the live GitHub URL
+
+### Store commands summary
+
+| Command | Description |
+|---|---|
+| `/store login <token>` | Link your GitHub account |
+| `/store logout` | Unlink GitHub account |
+| `/store browse` | List all published plugins |
+| `/store search <query>` | Search plugins by keyword |
+| `/store install <user/codename>` | Download and install a plugin |
+| `/store install <codename>` | Search store and install by codename |
+| `/store upload <path>` | Publish your `.mmd` to the store |
 
 ---
 
@@ -451,6 +546,12 @@ Once saved, select **Custom Endpoint** from `/models` to start using it. The con
 | `/plugin-load <path>` | Load a `.mmd` plugin file |
 | `/plugin-list` | Show all loaded plugins and their registered commands |
 | `/plugin-unload <name>` | Unload a plugin by name |
+| `/store login <token>` | Link your GitHub account to the plugin store |
+| `/store logout` | Unlink GitHub account |
+| `/store browse` | Browse all published plugins |
+| `/store search <query>` | Search plugins by keyword |
+| `/store install <user/codename>` | Download and install a plugin from the store |
+| `/store upload <path>` | Publish your `.mmd` plugin to the store |
 | `/help` | Show help |
 | `/exit` or `/quit` | Leave |
 
