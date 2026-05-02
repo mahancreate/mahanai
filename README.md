@@ -1,6 +1,6 @@
 <img width="700" height="300" alt="(M MahanAI)" src="https://github.com/user-attachments/assets/fc20edd6-601f-4740-9ac2-e2db61c8f49f" />
 
-# MahanAI Super
+# MahanAI Max
 
 Terminal AI agent (Max 1.0) with multi-model support, streaming chat, tools, and a built-in Claude CLI mode. Docs: [MahanAI](https://mahancreate.github.io/mahanai).
 
@@ -432,7 +432,7 @@ Every tool action MahanAI takes on your behalf requires explicit approval before
 
 ## Models
 
-MahanAI Super supports multiple backends selectable at runtime via `/models`.
+MahanAI Max supports multiple backends selectable at runtime via `/models`.
 
 ### NVIDIA NIM
 
@@ -520,7 +520,7 @@ Once saved, select **Custom Endpoint** from `/models` to start using it. The con
 |---|---|
 | `/models` | Interactive model selector (↑↓ arrows, Enter to confirm, Esc to cancel) |
 | `/mode claude` | Quick-switch to Claude Sonnet 4.6 |
-| `/mode default` | Quick-switch back to MahanAI Super (server) |
+| `/mode default` | Quick-switch back to MahanAI Max (server) |
 | `/effort <level>` | Set reasoning effort: `low`, `medium`, `high`, `very-high` |
 | `/plan on` | Enable plan mode — MahanAI outlines a plan before every response |
 | `/plan off` | Disable plan mode |
