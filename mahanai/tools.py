@@ -144,6 +144,23 @@ TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_url",
+            "description": "Fetch the text content of a URL (HTML is stripped to plain text).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL to fetch.",
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+    },
 ]
 
 # ── Approval helpers ───────────────────────────────────────────────────────────
@@ -417,6 +434,52 @@ def list_directory(base: Path, args: dict[str, object]) -> str:
         return json.dumps({"error": str(e), "path": str(path)})
 
 
+def fetch_url(base: Path, args: dict[str, object]) -> str:
+    url = str(args.get("url", "")).strip()
+    if not url:
+        return json.dumps({"error": "empty url"})
+
+    print(f"\n{C.WARN}  Fetch URL{C.RST}")
+    print(f"  {C.DIM}{url}{C.RST}")
+    print(f"  {C.OK}[A]{C.RST} Allow    {C.ERR}[D]{C.RST} Deny")
+    ans = _read_input("  > ").lower()
+    if ans not in ("a", "allow"):
+        return json.dumps({"error": "user_denied", "url": url})
+
+    try:
+        import httpx as _httpx
+        from html.parser import HTMLParser as _HP
+
+        resp = _httpx.get(url, timeout=30.0, follow_redirects=True)
+        resp.raise_for_status()
+        ct = resp.headers.get("content-type", "")
+        if "html" in ct.lower():
+            class _Stripper(_HP):
+                def __init__(self) -> None:
+                    super().__init__()
+                    self.parts: list[str] = []
+                    self._skip = False
+                def handle_starttag(self, tag: str, attrs: object) -> None:
+                    if tag in ("script", "style"):
+                        self._skip = True
+                def handle_endtag(self, tag: str) -> None:
+                    if tag in ("script", "style"):
+                        self._skip = False
+                def handle_data(self, d: str) -> None:
+                    if not self._skip:
+                        self.parts.append(d)
+            s = _Stripper()
+            s.feed(resp.text)
+            text = re.sub(r"\s+", " ", " ".join(s.parts)).strip()
+        else:
+            text = resp.text
+        if len(text) > 50_000:
+            text = text[:50_000] + "\n… [truncated]"
+        return json.dumps({"url": url, "content": text, "status": resp.status_code})
+    except Exception as e:
+        return json.dumps({"error": str(e), "url": url})
+
+
 def execute_tool(name: str, arguments_json: str, workspace: Path) -> str:
     canon = normalize_tool_arguments_json(arguments_json)
     if canon == "{}" and (arguments_json or "").strip() not in ("", "{}"):
@@ -441,4 +504,6 @@ def execute_tool(name: str, arguments_json: str, workspace: Path) -> str:
         return append_file(workspace, args)
     if name == "list_directory":
         return list_directory(workspace, args)
+    if name == "fetch_url":
+        return fetch_url(workspace, args)
     return json.dumps({"error": f"unknown tool: {name}"})

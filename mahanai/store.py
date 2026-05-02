@@ -190,3 +190,50 @@ def find_plugin_repo(codename: str, token: str | None = None) -> str | None:
         if item.get("name") == codename:
             return item["full_name"]
     return items[0]["full_name"] if items else None
+
+
+# ---------------------------------------------------------------------------
+# Update
+# ---------------------------------------------------------------------------
+
+def get_plugin_remote_version(repo_full_name: str, token: str | None = None) -> str | None:
+    """Return the plugin.version from the .mmd file in a GitHub repo, or None."""
+    try:
+        contents = _gh("GET", f"/repos/{repo_full_name}/contents/", token=token)
+        mmd_files = [f for f in contents if isinstance(f, dict) and f["name"].endswith(".mmd")]  # type: ignore
+        if not mmd_files:
+            return None
+        raw_url = mmd_files[0]["download_url"]
+        req = urllib.request.Request(raw_url, headers={"User-Agent": _UA})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            text = resp.read().decode("utf-8", errors="replace")
+        import re
+        m = re.search(r"plugin\.version\s*=\s*(.+)", text)
+        return m.group(1).strip() if m else None
+    except Exception:
+        return None
+
+
+def update_plugin(repo_full_name: str, token: str | None = None) -> tuple[bool, str]:
+    """
+    Re-download the plugin if the remote version differs from the local one.
+    Returns (was_updated, message).
+    """
+    try:
+        local_path = _plugins_dir() / (repo_full_name.split("/")[-1] + ".mmd")
+        local_version: str | None = None
+        if local_path.is_file():
+            try:
+                local_plugin = parse_mmd_file(local_path)
+                local_version = local_plugin.version
+            except Exception:
+                pass
+
+        remote_version = get_plugin_remote_version(repo_full_name, token)
+        if remote_version and remote_version == local_version:
+            return False, f"Already up to date (v{local_version})"
+
+        new_path = install_plugin(repo_full_name, token)
+        return True, str(new_path)
+    except Exception as e:
+        raise RuntimeError(str(e)) from e

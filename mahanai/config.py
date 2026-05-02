@@ -54,7 +54,6 @@ def save_api_key(api_key: str) -> None:
     data = _read_config()
     data["api_key"] = api_key.strip()
     _write_config(data)
-    print("CONFIG PATH (SAVE):", config_file_path())
 
 
 def clear_saved_api_key() -> None:
@@ -275,3 +274,146 @@ def add_always_allowed_file_op(op: str) -> None:
     if op not in ops:
         ops.append(op)
     _write_config(data)
+
+
+# ── Memory ────────────────────────────────────────────────────────────────────
+
+def save_memory(content: str) -> str:
+    """Save a memory entry. Returns the generated ID."""
+    import time as _time
+    mid = str(int(_time.time() * 1000))
+    data = _read_config()
+    memories = data.setdefault("memories", {})
+    memories[mid] = {"id": mid, "content": content.strip()}
+    _write_config(data)
+    return mid
+
+
+def load_memories() -> dict[str, dict]:
+    return _read_config().get("memories", {})
+
+
+def remove_memory(mid: str) -> bool:
+    data = _read_config()
+    memories = data.get("memories", {})
+    if mid not in memories:
+        return False
+    memories.pop(mid)
+    data["memories"] = memories
+    if not memories:
+        data.pop("memories", None)
+    _write_config(data)
+    return True
+
+
+# ── Prompt library ────────────────────────────────────────────────────────────
+
+def save_prompt(name: str, content: str) -> None:
+    data = _read_config()
+    prompts = data.setdefault("prompts", {})
+    prompts[name.strip()] = content.strip()
+    _write_config(data)
+
+
+def load_prompts() -> dict[str, str]:
+    return _read_config().get("prompts", {})
+
+
+def remove_prompt(name: str) -> bool:
+    data = _read_config()
+    prompts = data.get("prompts", {})
+    if name not in prompts:
+        return False
+    prompts.pop(name)
+    data["prompts"] = prompts
+    if not prompts:
+        data.pop("prompts", None)
+    _write_config(data)
+    return True
+
+
+# ── Aliases ───────────────────────────────────────────────────────────────────
+
+def save_alias(trigger: str, command: str) -> None:
+    data = _read_config()
+    aliases = data.setdefault("aliases", {})
+    aliases[trigger.strip()] = command.strip()
+    _write_config(data)
+
+
+def load_aliases() -> dict[str, str]:
+    return _read_config().get("aliases", {})
+
+
+def remove_alias(trigger: str) -> bool:
+    data = _read_config()
+    aliases = data.get("aliases", {})
+    if trigger not in aliases:
+        return False
+    aliases.pop(trigger)
+    data["aliases"] = aliases
+    if not aliases:
+        data.pop("aliases", None)
+    _write_config(data)
+    return True
+
+
+# ── Sessions ──────────────────────────────────────────────────────────────────
+
+def sessions_dir() -> Path:
+    return config_file_path().parent / "sessions"
+
+
+def save_session(session_id: str, session_data: dict[str, Any]) -> None:
+    d = sessions_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / f"{session_id}.json"
+    path.write_text(json.dumps(session_data, indent=2), encoding="utf-8")
+
+
+def load_session(session_id: str) -> dict[str, Any] | None:
+    path = sessions_dir() / f"{session_id}.json"
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def list_sessions() -> list[dict[str, Any]]:
+    d = sessions_dir()
+    if not d.is_dir():
+        return []
+    result = []
+    for f in sorted(d.glob("*.json"), reverse=True)[:50]:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            result.append(data)
+        except Exception:
+            pass
+    return result
+
+
+# ── Token display setting ─────────────────────────────────────────────────────
+
+def save_tokens_setting(enabled: bool) -> None:
+    data = _read_config()
+    data["show_tokens"] = enabled
+    _write_config(data)
+
+
+def load_tokens_setting() -> bool:
+    return bool(_read_config().get("show_tokens", False))
+
+
+# ── Document index ────────────────────────────────────────────────────────────
+
+def save_index_documents(docs: list[dict[str, Any]]) -> None:
+    data = _read_config()
+    data["index_docs"] = docs
+    _write_config(data)
+
+
+def load_index_documents() -> list[dict[str, Any]]:
+    return _read_config().get("index_docs", [])
