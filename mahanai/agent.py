@@ -82,13 +82,13 @@ _LOADED_PLUGINS: dict[str, MmdPlugin] = {}  # name → MmdPlugin
 
 def _inject_saved_plugins() -> None:
     """Load persisted .mmd plugins from config on startup."""
-    for entry in load_plugins().values():
+    for name, entry in list(load_plugins().items()):
         p = entry.get("path", "")
         try:
             plugin = parse_mmd_file(p)
             _LOADED_PLUGINS[plugin.name] = plugin
         except Exception:
-            pass
+            remove_plugin(name)
 
 
 # ── Auto-update check ─────────────────────────────────────────────────────────
@@ -132,6 +132,7 @@ def _print_update_notice(thread: threading.Thread) -> None:
 
 NVIDIA_BASE_URL = "http://89.167.0.111:8000/v1"
 DEFAULT_MODEL = "mahanai/mahanai"
+_OLLAMA_DEFAULT_API_KEY = "ollama"
 
 NVIDIA_DIRECT_URL = "https://integrate.api.nvidia.com/v1"
 NVIDIA_DIRECT_MODEL = "meta/llama-3.3-70b-instruct"
@@ -202,7 +203,7 @@ def _ollama_entry(name: str, address: str, port: int, api_key: str, url: str | N
         "group": "Ollama",
         "mode":  "ollama",
         "ollama_url":     url or f"http://{address}:{port}/api/v1",
-        "ollama_api_key": api_key or "ollama",
+        "ollama_api_key": api_key or _OLLAMA_DEFAULT_API_KEY,
     }
 
 
@@ -265,7 +266,11 @@ def print_startup_banner(model_label: str = "MahanAI Super", compact: bool = Fal
             console.print(_gradient_line(line, colors))
         console.print("\n" + "=" * 64)
         console.print(f"[bold]  Max 1.0  |  {model_label}  |  /api-key to save key (persists)[/bold]")
-        console.print("[dim]  Replies stream live (MAHANAI_STREAM=0 to wait for full text)[/dim]")
+        _streaming = os.environ.get("MAHANAI_STREAM", "1").strip().lower() not in ("0", "false", "no", "off")
+        if _streaming:
+            console.print("[dim]  Replies stream live (MAHANAI_STREAM=0 to wait for full text)[/dim]")
+        else:
+            console.print("[dim]  Replies wait for full response (MAHANAI_STREAM=1 to stream)[/dim]")
         console.print("[cyan]  /help  /exit  /quit[/cyan]")
         console.print("=" * 64)
 
@@ -1339,6 +1344,8 @@ def main() -> None:
         from mahanai.mai_parser import parse_mai_file
         p = Path(info.get("path", ""))
         if not p.is_file():
+            print(f"{C.WARN}Saved theme file missing; clearing from config.{C.RST}\n")
+            clear_custom_theme()
             return
         try:
             mai = parse_mai_file(p)
@@ -1346,8 +1353,9 @@ def main() -> None:
             display = info.get("display") or mai.display()
             C.register_mai_theme(slug, display, str(p))
             C.apply_mai_theme(mai)
-        except Exception:
-            pass
+        except Exception as _e:
+            print(f"{C.WARN}Saved theme could not be loaded ({_e}); clearing from config.{C.RST}\n")
+            clear_custom_theme()
 
     def _reapply_mai_theme() -> None:
         """Re-apply saved .mai color overrides after a base theme switch."""
@@ -1357,11 +1365,14 @@ def main() -> None:
         from pathlib import Path
         from mahanai.mai_parser import parse_mai_file
         p = Path(info.get("path", ""))
-        if p.is_file():
-            try:
-                C.apply_mai_theme(parse_mai_file(p))
-            except Exception:
-                pass
+        if not p.is_file():
+            clear_custom_theme()
+            return
+        try:
+            C.apply_mai_theme(parse_mai_file(p))
+        except Exception as _e:
+            print(f"{C.WARN}Saved theme could not be re-applied ({_e}); clearing from config.{C.RST}\n")
+            clear_custom_theme()
 
     # ── Server mode ───────────────────────────────────────────────────────────
     if args.server:
@@ -1413,10 +1424,23 @@ def main() -> None:
     _register_and_apply_saved_mai_theme()
     _inject_ollama_providers()
     _inject_saved_plugins()
+    _env_model = os.environ.get("MAHANAI_MODEL", "")
+    _env_model_unrecognized = False
+    if _env_model:
+        _env_idx = next(
+            (i for i, m in enumerate(AVAILABLE_MODELS) if m["name"] == _env_model),
+            None,
+        )
+        if _env_idx is not None:
+            active_model_idx = _env_idx
+        else:
+            _env_model_unrecognized = True
     _update_thread = _start_update_check()
     print_startup_banner(AVAILABLE_MODELS[active_model_idx]["label"], compact=compact)
     print()
     _print_update_notice(_update_thread)
+    if _env_model_unrecognized:
+        print(f"{C.WARN}MAHANAI_MODEL={_env_model!r} not found in model list; using default.{C.RST}\n")
 
     if nvidia_api_key:
         print(
@@ -1769,8 +1793,11 @@ def main() -> None:
             if cmd == "/custom":
                 sub = rest.strip()
                 if sub.lower() == "clear":
-                    clear_custom_endpoint()
-                    print(f"{C.OK}Custom endpoint removed.{C.RST}\n")
+                    if not load_custom_endpoint():
+                        print(f"{C.WARN}No custom endpoint configured.{C.RST}\n")
+                    else:
+                        clear_custom_endpoint()
+                        print(f"{C.OK}Custom endpoint removed.{C.RST}\n")
                     continue
                 # Parse inline args: url [model [api_key]]
                 parts = sub.split(None, 2)
@@ -2435,9 +2462,11 @@ def main() -> None:
                 if _shell == "fish":
                     print(f"\n{C.DIM}Add to ~/.config/fish/config.fish:{C.RST}\n")
                     print(_SHELL_INIT_FISH)
-                else:
+                elif _shell in ("bash", "zsh", ""):
                     print(f"\n{C.DIM}Add to ~/.bashrc or ~/.zshrc:{C.RST}\n")
                     print(_SHELL_INIT_BASH)
+                else:
+                    print(f"{C.ERR}Unknown shell {_shell!r}.{C.RST} Supported: {C.DIM}bash{C.RST}, {C.DIM}zsh{C.RST}, {C.DIM}fish{C.RST}.\n")
                 continue
 
             if not _route_after_cmd:
@@ -2484,6 +2513,8 @@ def main() -> None:
             print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
             _claude_reply = _run_claude_cli(effective_user, model=claude_model, effort_instruction=effort_instr)
             print("\n")
+            history.append({"role": "user", "content": effective_user})
+            history.append({"role": "assistant", "content": _claude_reply})
             _post_reply(_claude_reply)
             continue
 
@@ -2536,7 +2567,7 @@ def main() -> None:
             try:
                 reply = run_turn(
                     client,
-                    selected.get("ollama_api_key") or "ollama",
+                    selected.get("ollama_api_key") or _OLLAMA_DEFAULT_API_KEY,
                     selected["name"],
                     history,
                     workspace,

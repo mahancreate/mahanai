@@ -103,4 +103,11 @@ def parse_mmd_file(path: str | Path) -> MmdPlugin:
 
         plugin.commands.append(cmd)
 
+    add_cmd_occurrences = len(re.findall(r'\badd\s+command\s*\(', text))
+    if add_cmd_occurrences > len(plugin.commands):
+        raise ValueError(
+            f"{path.name!r}: found {add_cmd_occurrences} 'add command' block(s) "
+            f"but only {len(plugin.commands)} parsed successfully — check syntax"
+        )
+
     return plugin

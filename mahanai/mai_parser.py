@@ -73,20 +73,29 @@ def _expand_short_hex(hex_str: str) -> str:
     return "#" + "".join(c * 2 for c in h)
 
 
-def _resolve_color(token: str, variables: dict[str, str]) -> str | None:
-    """Resolve a color name, variable reference, or hex literal to a hex string."""
+_HEX3 = re.compile(r'^#[0-9a-fA-F]{3}$')
+_HEX6 = re.compile(r'^#[0-9a-fA-F]{6}$')
+
+
+def _resolve_color(token: str, variables: dict[str, str]) -> str:
+    """Resolve a color name, variable reference, or hex literal to a hex string.
+
+    Raises ValueError for unrecognized or malformed color values.
+    """
     token = token.strip()
     lower = token.lower()
     if lower in variables:
         return variables[lower]
     if token.startswith("#"):
-        if len(token) == 4:
+        if _HEX3.match(token):
             return _expand_short_hex(token)
-        if len(token) == 7:
+        if _HEX6.match(token):
             return token.lower()
+        raise ValueError(f"invalid hex color {token!r} (expected #RGB or #RRGGBB)")
     if lower in _NAMED_COLORS:
         return _NAMED_COLORS[lower]
-    return None
+    valid = ", ".join(sorted(_NAMED_COLORS))
+    raise ValueError(f"unknown color name {token!r} — valid names: {valid}")
 
 
 def _interpolate_gradient(start_hex: str, end_hex: str, steps: int = 10) -> list[str]:
@@ -109,11 +118,9 @@ def _interpolate_gradient(start_hex: str, end_hex: str, steps: int = 10) -> list
 def _parse_gradient_arg(arg: str, variables: dict[str, str]) -> list[str]:
     parts = [p.strip() for p in arg.split("->")]
     if len(parts) != 2:
-        return []
+        raise ValueError(f"gradient requires 'color1 -> color2' syntax, got {arg!r}")
     start = _resolve_color(parts[0], variables)
     end = _resolve_color(parts[1], variables)
-    if not start or not end:
-        return []
     return _interpolate_gradient(start, end, steps=10)
 
 
@@ -148,13 +155,24 @@ _PROPERTY_MAP: dict[str, str] = {
 
 
 def parse_mai_file(path: str | Path) -> MaiTheme:
-    """Parse a .mai file and return a MaiTheme."""
+    """Parse a .mai file and return a MaiTheme.
+
+    Raises ValueError for empty files or invalid color values.
+    """
     path = Path(path)
     text = path.read_text(encoding="utf-8")
+
+    content_lines = [
+        l.strip() for l in text.splitlines()
+        if l.strip() and not l.strip().startswith("#") and not l.strip().startswith("import ")
+    ]
+    if not content_lines:
+        raise ValueError(f"{path.name!r} is empty — no theme properties found")
+
     theme = MaiTheme(name=path.stem)
     variables: dict[str, str] = {}
 
-    for raw_line in text.splitlines():
+    for lineno, raw_line in enumerate(text.splitlines(), start=1):
         line = raw_line.strip()
         if not line or line.startswith("#") or line.startswith("import "):
             continue
@@ -167,9 +185,10 @@ def parse_mai_file(path: str | Path) -> MaiTheme:
 
         # Variable declaration: identifier = color_value
         if re.match(r'^[a-zA-Z_][a-zA-Z0-9_-]*$', lhs):
-            resolved = _resolve_color(rhs, variables)
-            if resolved:
-                variables[lhs.lower()] = resolved
+            try:
+                variables[lhs.lower()] = _resolve_color(rhs, variables)
+            except ValueError as exc:
+                raise ValueError(f"line {lineno}: {exc}") from exc
             continue
 
         # Bare metadata: theme.name = some value (no function call)
@@ -186,16 +205,17 @@ def parse_mai_file(path: str | Path) -> MaiTheme:
         fn_name, fn_arg = fn_call
         target = _PROPERTY_MAP[lhs]
 
-        if target == "banner_gradient":
-            if fn_name == "gradient":
-                theme.banner_gradient = _parse_gradient_arg(fn_arg, variables)
-        elif target in ("user_color", "ai_color", "err_color", "banner_color", "ok_color", "warn_color"):
-            if fn_name == "color":
-                resolved = _resolve_color(fn_arg, variables)
-                if resolved:
-                    setattr(theme, target, resolved)
-        elif target in ("ai_name", "user_name"):
-            if fn_name == "text":
-                setattr(theme, target, fn_arg)
+        try:
+            if target == "banner_gradient":
+                if fn_name == "gradient":
+                    theme.banner_gradient = _parse_gradient_arg(fn_arg, variables)
+            elif target in ("user_color", "ai_color", "err_color", "banner_color", "ok_color", "warn_color"):
+                if fn_name == "color":
+                    setattr(theme, target, _resolve_color(fn_arg, variables))
+            elif target in ("ai_name", "user_name"):
+                if fn_name == "text":
+                    setattr(theme, target, fn_arg)
+        except ValueError as exc:
+            raise ValueError(f"line {lineno}: {exc}") from exc
 
     return theme
