@@ -1602,11 +1602,15 @@ def main() -> None:
             if cmd == "/approvals":
                 sub = rest.strip().lower()
                 if sub == "clear":
-                    from mahanai.config import _read_config, _write_config
-                    data = _read_config()
-                    data.pop("always_allowed", None)
-                    _write_config(data)
-                    print(f"{C.OK}All Always Allow rules cleared.{C.RST}\n")
+                    _aa = load_always_allowed()
+                    if not _aa.get("command_prefixes") and not _aa.get("file_ops"):
+                        print(f"{C.DIM}No Always Allow rules to clear.{C.RST}\n")
+                    else:
+                        from mahanai.config import _read_config, _write_config
+                        data = _read_config()
+                        data.pop("always_allowed", None)
+                        _write_config(data)
+                        print(f"{C.OK}All Always Allow rules cleared.{C.RST}\n")
                 else:
                     aa = load_always_allowed()
                     prefixes = aa.get("command_prefixes", [])
@@ -1718,7 +1722,7 @@ def main() -> None:
                 except ValueError:
                     print(f"{C.ERR}Port must be a number.{C.RST}\n")
                     continue
-                o_key = parts[3] if len(parts) > 3 else "ollama"
+                o_key = parts[3] if len(parts) > 3 else _OLLAMA_DEFAULT_API_KEY
                 o_url = _build_ollama_url(o_addr, o_port)
                 o_clean = _strip_protocol(o_addr)
                 # Remove existing entry with same name so we can update it
@@ -1780,7 +1784,7 @@ def main() -> None:
                         f"Use /add-ollama to create it.\n"
                     )
                     continue
-                o_key = o_key_arg if o_key_arg is not None else (existing_entry.get("ollama_api_key") or "ollama")
+                o_key = o_key_arg if o_key_arg is not None else (existing_entry.get("ollama_api_key") or _OLLAMA_DEFAULT_API_KEY)
                 o_url = _build_ollama_url(o_addr, o_port)
                 o_clean = _strip_protocol(o_addr)
                 AVAILABLE_MODELS[existing_idx] = _ollama_entry(o_name, o_clean, o_port, o_key, o_url)
@@ -2118,6 +2122,8 @@ def main() -> None:
                 elif t == "off":
                     show_timestamps = False
                     print(f"{C.OK}Timestamps OFF{C.RST}\n")
+                elif t:
+                    print(f"{C.ERR}Usage: /timestamps on|off{C.RST}\n")
                 else:
                     print(f"{C.DIM}Timestamps: {'on' if show_timestamps else 'off'}{C.RST}\n")
                 continue
@@ -2346,7 +2352,7 @@ def main() -> None:
                     elif _csel["mode"] in ("server",) and api_key:
                         _stream_direct(api_key, [{"role": "user", "content": _cmsg}], model, NVIDIA_BASE_URL)
                     elif _csel["mode"] == "ollama":
-                        _stream_direct(_csel.get("ollama_api_key") or "ollama", [{"role": "user", "content": _cmsg}], _csel["name"], _csel["ollama_url"])
+                        _stream_direct(_csel.get("ollama_api_key") or _OLLAMA_DEFAULT_API_KEY, [{"role": "user", "content": _cmsg}], _csel["name"], _csel["ollama_url"])
                     print(f"\n{C.DIM}({time.time() - _t0:.1f}s){C.RST}")
                 print()
                 continue
@@ -2398,7 +2404,7 @@ def main() -> None:
                 elif _sel["mode"] in ("server",) and api_key:
                     _tkey, _turl, _tmodel = api_key, NVIDIA_BASE_URL, model
                 elif _sel["mode"] == "ollama":
-                    _tkey = _sel.get("ollama_api_key") or "ollama"
+                    _tkey = _sel.get("ollama_api_key") or _OLLAMA_DEFAULT_API_KEY
                     _turl = _sel["ollama_url"]
                     _tmodel = _sel["name"]
                 elif _sel["mode"] == "custom":
