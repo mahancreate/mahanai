@@ -2,7 +2,7 @@
 
 # MahanAI Max
 
-Terminal AI agent (Max 1.0) with multi-model support, streaming chat, tools, and a built-in Claude CLI mode. Docs: [MahanAI](https://mahancreate.github.io/mahanai).
+Terminal AI agent (Max 2.0) with multi-model support, streaming chat, tools, and a built-in Claude CLI mode. Docs: [MahanAI](https://mahancreate.github.io/mahanai).
 
 ## Install
 
