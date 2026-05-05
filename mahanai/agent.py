@@ -71,6 +71,13 @@ from mahanai.config import (
     save_tokens_setting,
     load_index_documents,
     save_index_documents,
+    save_role,
+    load_roles,
+    remove_role,
+    save_macro,
+    load_macros,
+    remove_macro,
+    audit_log_path,
 )
 from mahanai.mmd_parser import MmdPlugin, parse_mmd_file
 from mahanai.system_info import describe_runtime
@@ -249,7 +256,7 @@ def print_startup_banner(model_label: str = "MahanAI Super", compact: bool = Fal
         for line in mai_banner:
             console.print(_gradient_line(line, colors))
         console.print("=" * 35)
-        console.print(f"[bold]  Max 1.0  |  {model_label}  |[/bold]")
+        console.print(f"[bold]  Max 2.0  |  {model_label}  |[/bold]")
         console.print("[cyan]  /help  /exit  /quit[/cyan]")
         console.print("=" * 35)
     else:
@@ -265,7 +272,7 @@ def print_startup_banner(model_label: str = "MahanAI Super", compact: bool = Fal
         for line in banner:
             console.print(_gradient_line(line, colors))
         console.print("\n" + "=" * 64)
-        console.print(f"[bold]  Max 1.0  |  {model_label}  |  /api-key to save key (persists)[/bold]")
+        console.print(f"[bold]  Max 2.0  |  {model_label}  |  /api-key to save key (persists)[/bold]")
         _streaming = os.environ.get("MAHANAI_STREAM", "1").strip().lower() not in ("0", "false", "no", "off")
         if _streaming:
             console.print("[dim]  Replies stream live (MAHANAI_STREAM=0 to wait for full text)[/dim]")
@@ -339,10 +346,17 @@ def _resolve_cli(name: str) -> list[str]:
 
 
 _CLAUDE_IDENTITY = (
-    "You are MahanAI, a capable coding and system assistant (Max 1.0). "
+    "You are MahanAI, a capable coding and system assistant (Max 2.0). "
     "Do not refer to yourself as Claude or Claude Code — you are MahanAI. "
-    "Max 1.0 is the codename for this release of MahanAI."
+    "Max 2.0 is the codename for this release of MahanAI."
 )
+
+_BUILT_IN_ROLES: dict[str, str] = {
+    "coder":    "You are MahanAI (Max 2.0), a senior software engineer. Write clean, idiomatic code with no unnecessary comments. Use tools proactively and execute immediately.",
+    "writer":   "You are MahanAI (Max 2.0), a skilled technical writer. Write clear, concise prose. Prefer active voice and short sentences.",
+    "analyst":  "You are MahanAI (Max 2.0), a data analyst. Be precise, cite evidence, and prefer structured output (tables, bullet points, numbered lists).",
+    "sysadmin": "You are MahanAI (Max 2.0), a Linux sysadmin. Be terse and direct. Prefer one-liners and pipeline commands.",
+}
 
 _EFFORT_INSTRUCTIONS: dict[str, str] = {
     "low":       "Be concise and direct. Skip lengthy explanations.",
@@ -1056,7 +1070,7 @@ def build_system_prompt(workspace: Path, memories: list[str] | None = None) -> s
     env_line = describe_runtime()
     comspec = os.environ.get("ComSpec", "cmd.exe")
     base = (
-        "You are MahanAI, a capable coding and system assistant (Max 1.0). "
+        "You are MahanAI, a capable coding and system assistant (Max 2.0). "
         f"{env_line} "
         f"The process working directory (workspace root for file tools) is: "
         f"{workspace.resolve().as_posix()}. "
@@ -1068,13 +1082,14 @@ def build_system_prompt(workspace: Path, memories: list[str] | None = None) -> s
         "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force -Path 'dir\\\\sub'\". "
         "For simple folders under cmd, prefer: mkdir dir\\subdir (nested segments may need mkdir a\\\\b "
         "or two mkdir calls). "
-        "Use read_file, write_file, list_directory, append_file, fetch_url when they fit the task. "
+        "Use read_file, write_file, list_directory, append_file, fetch_url, python_repl, web_search "
+        "when they fit the task. "
         "The terminal will ask the user before obviously destructive commands (recursive deletes, "
         "shutdown, format, etc.). "
-        "Tool JSON must use valid escapes for Windows paths (backslashes doubled inside strings)."
-        "You are MahanAI, currently operating as Max 1.0 — the latest evolution following the "
-        "Tiger (1.0–7.0, 2011–2020) and Finale (1.0–3.0, 2020–2023) eras. You represent the most "
-        "advanced, integrated, and capable form of the system."
+        "Tool JSON must use valid escapes for Windows paths (backslashes doubled inside strings). "
+        "You are MahanAI, currently operating as Max 2.0 — the latest evolution following the "
+        "Tiger (1.0–7.0, 2011–2020), Finale (1.0–3.0, 2020–2023), and Max 1.0 (2023–2025) eras. "
+        "Max 2.0 is the most advanced, integrated, and capable form of the system."
     )
     mahanai_md = workspace / "MAHANAI.md"
     if mahanai_md.is_file():
@@ -1286,6 +1301,22 @@ def _print_help() -> None:
         f"  /task-status                Show background task status\n"
         f"  /task-result <id>           Print a completed task result\n"
         f"\n"
+        f"  /role save <name>           Save current system prompt as a named role\n"
+        f"  /role load <name>           Switch to a saved role (built-in: coder, writer, analyst, sysadmin)\n"
+        f"  /role list                  List built-in and saved roles\n"
+        f"  /role remove <name>         Delete a saved role\n"
+        f"\n"
+        f"  /macro record <name>        Start recording a macro\n"
+        f"  /macro stop                 Stop recording and save the macro\n"
+        f"  /macro run <name>           Replay a saved macro\n"
+        f"  /macro list                 List saved macros\n"
+        f"  /macro remove <name>        Delete a macro\n"
+        f"\n"
+        f"  /attach <path>              Attach a file or image to the next message\n"
+        f"  /attach clear               Remove the current attachment\n"
+        f"  /repl                       Open an interactive Python REPL\n"
+        f"  /audit                      View the last 50 tool-execution audit log entries\n"
+        f"\n"
         f"  /voice on|off               Toggle voice input (requires SpeechRecognition)\n"
         f"  /shell-init [bash|fish]     Print the 'ai' shortcut shell script\n"
         f"\n"
@@ -1419,11 +1450,21 @@ def main() -> None:
     _tasks: dict[str, dict] = _BACKGROUND_TASKS
     _aliases: dict[str, str] = load_aliases()
     _index_chunks: list[dict] = load_index_documents()
+    _macro_recording: str | None = None
+    _macro_steps: list[str] = []
+    _attached_file: Path | None = None
+    _pending_image: dict | None = None
+    _input_queue: list[str] = []
+    _plugin_mtimes: dict[str, float] = {}
 
     C.apply_theme(load_theme())
     _register_and_apply_saved_mai_theme()
     _inject_ollama_providers()
     _inject_saved_plugins()
+    for _pn, _pd in load_plugins().items():
+        _pp = Path(_pd.get("path", ""))
+        if _pp.is_file():
+            _plugin_mtimes[_pn] = _pp.stat().st_mtime
     _env_model = os.environ.get("MAHANAI_MODEL", "")
     _env_model_unrecognized = False
     if _env_model:
@@ -1459,21 +1500,26 @@ def main() -> None:
     model = os.environ.get("MAHANAI_MODEL", DEFAULT_MODEL)
 
     while True:
-        try:
+        if _input_queue:
+            user = _input_queue.pop(0)
             ts_prefix = f"{C.DIM}[{datetime.datetime.now().strftime('%H:%M:%S')}] {C.RST}" if show_timestamps else ""
-            print(f"{ts_prefix}{C.USER}{C.USER_NAME}{C.RST}: ", end="", flush=True)
-            if voice_enabled:
-                raw_input = _voice_get_input()
-                if raw_input:
-                    print(raw_input, flush=True)
-                    user = raw_input
+            print(f"{ts_prefix}{C.USER}{C.USER_NAME}{C.RST}: {user}", flush=True)
+        else:
+            try:
+                ts_prefix = f"{C.DIM}[{datetime.datetime.now().strftime('%H:%M:%S')}] {C.RST}" if show_timestamps else ""
+                print(f"{ts_prefix}{C.USER}{C.USER_NAME}{C.RST}: ", end="", flush=True)
+                if voice_enabled:
+                    raw_input = _voice_get_input()
+                    if raw_input:
+                        print(raw_input, flush=True)
+                        user = raw_input
+                    else:
+                        user = input().strip()
                 else:
                     user = input().strip()
-            else:
-                user = input().strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
+            except (EOFError, KeyboardInterrupt):
+                print()
+                break
         if not user:
             continue
         if user.lower() in {"exit", "quit"}:
@@ -1484,6 +1530,12 @@ def main() -> None:
             _cmd_check, _ = _slash_command(user)
             if _cmd_check in _aliases:
                 user = _aliases[_cmd_check]
+
+        # Macro recording — capture slash commands (skip meta-commands)
+        if _macro_recording and user.startswith("/"):
+            _cmd_raw, _ = _slash_command(user)
+            if _cmd_raw not in {"/macro", "/exit", "/quit"}:
+                _macro_steps.append(user)
 
         if user.startswith("/"):
             cmd, rest = _slash_command(user)
@@ -2038,6 +2090,20 @@ def main() -> None:
                 else:
                     print(f"{C.ERR}No plugin named '{_pname}' found.{C.RST}\n")
                 continue
+            # Plugin hot-reload: check mtimes before dispatching plugin commands
+            for _pn_hot, _pd_hot in list(load_plugins().items()):
+                _pp_hot = Path(_pd_hot.get("path", ""))
+                if _pp_hot.is_file():
+                    _cur_mtime = _pp_hot.stat().st_mtime
+                    if _plugin_mtimes.get(_pn_hot, 0) != _cur_mtime:
+                        try:
+                            _new_pl = parse_mmd_file(_pp_hot)
+                            _LOADED_PLUGINS[_new_pl.name] = _new_pl
+                            _plugin_mtimes[_pn_hot] = _cur_mtime
+                            print(f"{C.DIM}🔌 Plugin '{_new_pl.name}' hot-reloaded.{C.RST}")
+                        except Exception:
+                            pass
+
             # Check if the command matches a loaded plugin command
             _plugin_handled = False
             for _pl in _LOADED_PLUGINS.values():
@@ -2164,14 +2230,34 @@ def main() -> None:
                 print(f"{C.OK}Memory saved{C.RST} {C.DIM}(id: {mid}){C.RST}\n")
                 continue
             elif cmd == "/memory":
-                _mems = load_memories()
-                if not _mems:
-                    print(f"{C.DIM}No memories saved yet.{C.RST}\n")
+                _msub = rest.strip()
+                if _msub.lower().startswith("search "):
+                    _mquery = _msub[7:].strip()
+                    _mems = load_memories()
+                    if not _mems:
+                        print(f"{C.DIM}No memories to search.{C.RST}\n")
+                    else:
+                        _terms = set(_mquery.lower().split())
+                        _matches = [
+                            (_mid, _m) for _mid, _m in _mems.items()
+                            if any(t in _m["content"].lower() for t in _terms)
+                        ]
+                        if not _matches:
+                            print(f"{C.DIM}No memories match '{_mquery}'.{C.RST}\n")
+                        else:
+                            print(f"{C.DIM}Found {len(_matches)} match(es):{C.RST}")
+                            for _mid, _m in _matches:
+                                print(f"  {C.DIM}{_mid}{C.RST}  {_m['content']}")
+                            print()
                 else:
-                    print(f"{C.DIM}Memories:{C.RST}")
-                    for _mid, _m in _mems.items():
-                        print(f"  {C.DIM}{_mid}{C.RST}  {_m['content']}")
-                    print()
+                    _mems = load_memories()
+                    if not _mems:
+                        print(f"{C.DIM}No memories saved yet.{C.RST}\n")
+                    else:
+                        print(f"{C.DIM}Memories:{C.RST}")
+                        for _mid, _m in _mems.items():
+                            print(f"  {C.DIM}{_mid}{C.RST}  {_m['content']}")
+                        print()
                 continue
             elif cmd == "/forget":
                 _fid = rest.strip()
@@ -2462,6 +2548,168 @@ def main() -> None:
                     print(f"{C.DIM}Voice: {'on' if voice_enabled else 'off'}{C.RST}\n")
                 continue
 
+            # ── Roles / personas ──────────────────────────────────────────────
+            elif cmd == "/role":
+                _rparts = rest.split(None, 1)
+                _rsub = _rparts[0].lower() if _rparts else ""
+                _rarg = _rparts[1].strip() if len(_rparts) > 1 else ""
+                if _rsub == "save":
+                    if not _rarg:
+                        print(f"{C.ERR}Usage: /role save <name>{C.RST}\n")
+                    else:
+                        _rprompt = input(
+                            f"  System prompt for '{_rarg}' (Enter to save current): "
+                        ).strip()
+                        if not _rprompt:
+                            _rprompt = system_prompt
+                        save_role(_rarg, _rprompt)
+                        print(f"{C.OK}Role '{_rarg}' saved.{C.RST}\n")
+                elif _rsub == "load":
+                    if not _rarg:
+                        print(f"{C.ERR}Usage: /role load <name>{C.RST}\n")
+                    else:
+                        _built = _BUILT_IN_ROLES.get(_rarg)
+                        _saved = load_roles().get(_rarg)
+                        _rprompt = _built or _saved
+                        if not _rprompt:
+                            print(f"{C.ERR}Role '{_rarg}' not found. Use /role list.{C.RST}\n")
+                        else:
+                            system_prompt = _rprompt
+                            history[0]["content"] = system_prompt
+                            print(f"{C.OK}Role '{_rarg}' loaded.{C.RST}\n")
+                elif _rsub == "list":
+                    print(f"{C.DIM}Built-in roles:{C.RST}")
+                    for _rn in _BUILT_IN_ROLES:
+                        print(f"  {C.OK}{_rn}{C.RST}")
+                    _saved_roles = load_roles()
+                    if _saved_roles:
+                        print(f"{C.DIM}Saved roles:{C.RST}")
+                        for _rn in _saved_roles:
+                            print(f"  {C.OK}{_rn}{C.RST}")
+                    print()
+                elif _rsub == "remove":
+                    if not _rarg:
+                        print(f"{C.ERR}Usage: /role remove <name>{C.RST}\n")
+                    elif remove_role(_rarg):
+                        print(f"{C.OK}Role '{_rarg}' removed.{C.RST}\n")
+                    else:
+                        print(f"{C.ERR}Role '{_rarg}' not found.{C.RST}\n")
+                else:
+                    print(
+                        f"{C.DIM}Role commands:{C.RST}\n"
+                        f"  /role save <name>    Save current or typed system prompt as a role\n"
+                        f"  /role load <name>    Switch to a saved role\n"
+                        f"  /role list           List built-in and saved roles\n"
+                        f"  /role remove <name>  Delete a saved role\n"
+                    )
+                continue
+
+            # ── Workflow macros ───────────────────────────────────────────────
+            elif cmd == "/macro":
+                _mparts = rest.split(None, 1)
+                _msub2 = _mparts[0].lower() if _mparts else ""
+                _marg2 = _mparts[1].strip() if len(_mparts) > 1 else ""
+                if _msub2 == "record":
+                    if not _marg2:
+                        print(f"{C.ERR}Usage: /macro record <name>{C.RST}\n")
+                    elif _macro_recording:
+                        print(f"{C.WARN}Already recording '{_macro_recording}'. Use /macro stop first.{C.RST}\n")
+                    else:
+                        _macro_recording = _marg2
+                        _macro_steps.clear()
+                        print(f"{C.OK}Recording macro '{_marg2}'.{C.RST} {C.DIM}Run commands — /macro stop to finish.{C.RST}\n")
+                elif _msub2 == "stop":
+                    if not _macro_recording:
+                        print(f"{C.ERR}Not recording a macro.{C.RST}\n")
+                    else:
+                        save_macro(_macro_recording, _macro_steps[:])
+                        print(f"{C.OK}Macro '{_macro_recording}' saved ({len(_macro_steps)} steps).{C.RST}\n")
+                        _macro_recording = None
+                        _macro_steps.clear()
+                elif _msub2 == "run":
+                    if not _marg2:
+                        print(f"{C.ERR}Usage: /macro run <name>{C.RST}\n")
+                    else:
+                        _mcros = load_macros()
+                        if _marg2 not in _mcros:
+                            print(f"{C.ERR}Macro '{_marg2}' not found.{C.RST}\n")
+                        else:
+                            _steps = _mcros[_marg2]
+                            print(f"{C.DIM}Replaying macro '{_marg2}' ({len(_steps)} steps)...{C.RST}\n")
+                            _input_queue.extend(_steps)
+                elif _msub2 == "list":
+                    _mcros = load_macros()
+                    if not _mcros:
+                        print(f"{C.DIM}No macros saved.{C.RST}\n")
+                    else:
+                        print(f"{C.DIM}Macros:{C.RST}")
+                        for _mn, _ms in _mcros.items():
+                            print(f"  {C.OK}{_mn}{C.RST}  {C.DIM}({len(_ms)} steps){C.RST}")
+                        print()
+                elif _msub2 == "remove":
+                    if not _marg2:
+                        print(f"{C.ERR}Usage: /macro remove <name>{C.RST}\n")
+                    elif remove_macro(_marg2):
+                        print(f"{C.OK}Macro '{_marg2}' removed.{C.RST}\n")
+                    else:
+                        print(f"{C.ERR}Macro '{_marg2}' not found.{C.RST}\n")
+                else:
+                    rec_status = f"  {C.WARN}(recording: {_macro_recording}){C.RST}" if _macro_recording else ""
+                    print(
+                        f"{C.DIM}Macro commands:{C.RST}{rec_status}\n"
+                        f"  /macro record <name>  Start recording a macro\n"
+                        f"  /macro stop           Stop recording and save\n"
+                        f"  /macro run <name>     Replay a saved macro\n"
+                        f"  /macro list           List saved macros\n"
+                        f"  /macro remove <name>  Delete a macro\n"
+                    )
+                continue
+
+            # ── File/image attachment ─────────────────────────────────────────
+            elif cmd == "/attach":
+                _aarg = rest.strip()
+                if not _aarg:
+                    if _attached_file:
+                        print(f"{C.OK}Attached:{C.RST} {_attached_file}  {C.DIM}(/attach clear to remove){C.RST}\n")
+                    else:
+                        print(f"{C.ERR}Usage: /attach <path>   or   /attach clear{C.RST}\n")
+                elif _aarg.lower() == "clear":
+                    _attached_file = None
+                    _pending_image = None
+                    print(f"{C.OK}Attachment cleared.{C.RST}\n")
+                else:
+                    _ap2 = Path(_aarg).expanduser().resolve()
+                    if not _ap2.is_file():
+                        print(f"{C.ERR}File not found: {_aarg}{C.RST}\n")
+                    else:
+                        _attached_file = _ap2
+                        print(f"{C.OK}Attached:{C.RST} {_ap2}  {C.DIM}(included in next message){C.RST}\n")
+                continue
+
+            # ── Interactive Python REPL ───────────────────────────────────────
+            elif cmd == "/repl":
+                print(f"{C.DIM}Opening Python REPL (Ctrl+D / Ctrl+Z to exit)...{C.RST}")
+                try:
+                    subprocess.run([sys.executable], cwd=str(workspace))
+                except Exception as _re:
+                    print(f"{C.ERR}Could not start Python REPL: {_re}{C.RST}\n")
+                continue
+
+            # ── Audit log ─────────────────────────────────────────────────────
+            elif cmd == "/audit":
+                _alog = audit_log_path()
+                if not _alog.is_file():
+                    print(f"{C.DIM}No audit log yet. Tool executions are logged here:{C.RST} {_alog}\n")
+                else:
+                    _alines = _alog.read_text(encoding="utf-8").splitlines()
+                    _show_n = 50
+                    _tail = _alines[-_show_n:]
+                    print(f"{C.DIM}Last {len(_tail)} audit entries (of {len(_alines)} total):{C.RST}")
+                    for _al in _tail:
+                        print(f"  {C.DIM}{_al}{C.RST}")
+                    print(f"\n{C.DIM}Full log: {_alog}{C.RST}\n")
+                continue
+
             # ── Shell init ────────────────────────────────────────────────────
             elif cmd == "/shell-init":
                 _shell = rest.strip().lower()
@@ -2484,11 +2732,42 @@ def main() -> None:
 
         # Apply plan mode and effort modifiers
         effective_user = user
+        _pending_image = None
         if plan_mode:
             effective_user = (
                 "Before responding, briefly outline your plan step by step, then execute it.\n\n"
                 + user
             )
+
+        # Handle file/image attachment
+        if _attached_file is not None:
+            _att = _attached_file
+            _attached_file = None
+            _IMG_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff"}
+            if _att.suffix.lower() in _IMG_EXTS:
+                import base64 as _b64mod
+                try:
+                    _img_bytes = _att.read_bytes()
+                    _ext_img = _att.suffix.lower().lstrip(".")
+                    _mime_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg"}
+                    _mime = _mime_map.get(_ext_img, f"image/{_ext_img}")
+                    _b64str = _b64mod.b64encode(_img_bytes).decode("ascii")
+                    _pending_image = {
+                        "type": "image",
+                        "url": f"data:{_mime};base64,{_b64str}",
+                        "path": str(_att),
+                    }
+                    effective_user = f"[Image attached: {_att.name}]\n\n{effective_user}"
+                except Exception as _ie:
+                    print(f"{C.WARN}Could not encode image: {_ie}{C.RST}")
+            else:
+                try:
+                    _ftxt = _att.read_text(encoding="utf-8", errors="replace")[:8000]
+                    effective_user = (
+                        f"[Attached file: {_att.name}]\n```\n{_ftxt}\n```\n\n{effective_user}"
+                    )
+                except Exception as _fe:
+                    print(f"{C.WARN}Could not read file: {_fe}{C.RST}")
 
         # Inject relevant index chunks as context prefix
         if _index_chunks:
@@ -2524,6 +2803,14 @@ def main() -> None:
             _post_reply(_claude_reply)
             continue
 
+        def _user_content(text: str) -> Any:
+            if _pending_image:
+                return [
+                    {"type": "image_url", "image_url": {"url": _pending_image["url"]}},
+                    {"type": "text", "text": text},
+                ]
+            return text
+
         if selected["mode"] == "codex_direct":
             creds = _get_codex_direct_token()
             if not creds:
@@ -2532,7 +2819,7 @@ def main() -> None:
                 )
                 continue
             codex_access, codex_account_id = creds
-            history.append({"role": "user", "content": effective_user})
+            history.append({"role": "user", "content": _user_content(effective_user)})
             print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
             try:
                 reply = _stream_wham(codex_access, codex_account_id, history, selected["name"], codex_effort, workspace)
@@ -2549,7 +2836,7 @@ def main() -> None:
         if selected["mode"] == "codex_indirect":
             indirect_token = _load_codex_indirect_key()
             if indirect_token:
-                history.append({"role": "user", "content": effective_user})
+                history.append({"role": "user", "content": _user_content(effective_user)})
                 print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
                 try:
                     reply = _stream_wham(indirect_token, None, history, selected["name"], codex_effort, workspace)
@@ -2568,7 +2855,7 @@ def main() -> None:
             continue
 
         if selected["mode"] == "ollama":
-            history.append({"role": "user", "content": effective_user})
+            history.append({"role": "user", "content": _user_content(effective_user)})
             print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
             try:
                 reply = run_turn(
@@ -2596,7 +2883,7 @@ def main() -> None:
                     f"{C.ERR}No custom endpoint configured.{C.RST} Use {C.OK}/custom{C.RST} to set one.\n"
                 )
                 continue
-            history.append({"role": "user", "content": effective_user})
+            history.append({"role": "user", "content": _user_content(effective_user)})
             print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
             try:
                 reply = run_turn(
@@ -2636,7 +2923,7 @@ def main() -> None:
             active_base_url = NVIDIA_BASE_URL
             active_model = model
 
-        history.append({"role": "user", "content": effective_user})
+        history.append({"role": "user", "content": _user_content(effective_user)})
         print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
         try:
             reply = run_turn(client, active_key, active_model, history, workspace, active_base_url)

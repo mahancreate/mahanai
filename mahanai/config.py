@@ -407,6 +407,64 @@ def load_tokens_setting() -> bool:
     return bool(_read_config().get("show_tokens", False))
 
 
+# ── Roles ────────────────────────────────────────────────────────────────────
+
+def save_role(name: str, system_prompt: str) -> None:
+    data = _read_config()
+    roles = data.setdefault("roles", {})
+    roles[name.strip()] = system_prompt.strip()
+    _write_config(data)
+
+
+def load_roles() -> dict[str, str]:
+    return _read_config().get("roles", {})
+
+
+def remove_role(name: str) -> bool:
+    data = _read_config()
+    roles = data.get("roles", {})
+    if name not in roles:
+        return False
+    roles.pop(name)
+    data["roles"] = roles
+    if not roles:
+        data.pop("roles", None)
+    _write_config(data)
+    return True
+
+
+# ── Macros ────────────────────────────────────────────────────────────────────
+
+def save_macro(name: str, commands: list) -> None:
+    data = _read_config()
+    macros = data.setdefault("macros", {})
+    macros[name.strip()] = commands
+    _write_config(data)
+
+
+def load_macros() -> dict[str, list]:
+    return _read_config().get("macros", {})
+
+
+def remove_macro(name: str) -> bool:
+    data = _read_config()
+    macros = data.get("macros", {})
+    if name not in macros:
+        return False
+    macros.pop(name)
+    data["macros"] = macros
+    if not macros:
+        data.pop("macros", None)
+    _write_config(data)
+    return True
+
+
+# ── Audit log ─────────────────────────────────────────────────────────────────
+
+def audit_log_path() -> Path:
+    return config_file_path().parent / "audit.log"
+
+
 # ── Document index ────────────────────────────────────────────────────────────
 
 def save_index_documents(docs: list[dict[str, Any]]) -> None:
