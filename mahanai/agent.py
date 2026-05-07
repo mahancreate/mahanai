@@ -78,10 +78,16 @@ from mahanai.config import (
     load_macros,
     remove_macro,
     audit_log_path,
+    is_onboarding_complete,
+    mark_onboarding_complete,
+    save_cost_setting,
+    load_cost_setting,
+    save_context_limit,
+    load_context_limit,
 )
 from mahanai.mmd_parser import MmdPlugin, parse_mmd_file
 from mahanai.system_info import describe_runtime
-from mahanai.tools import TOOLS, execute_tool, normalize_tool_arguments_json
+from mahanai.tools import TOOLS, batch_approve_and_execute, execute_tool, normalize_tool_arguments_json
 
 # ── Plugin registry ───────────────────────────────────────────────────────────
 _LOADED_PLUGINS: dict[str, MmdPlugin] = {}  # name → MmdPlugin
@@ -364,6 +370,136 @@ _EFFORT_INSTRUCTIONS: dict[str, str] = {
     "high":      "Think through this carefully and thoroughly before responding.",
     "very-high": "Reason extensively and deeply before responding, considering all relevant angles and edge cases.",
 }
+
+# ── Cost tracker ──────────────────────────────────────────────────────────────
+# (input $/1M tokens, output $/1M tokens)
+_MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "claude-opus-4-7":             (15.0,  75.0),
+    "claude-sonnet-4-6":           (3.0,   15.0),
+    "claude-haiku-4-5-20251001":   (0.8,    4.0),
+    "gpt-5.4":                     (10.0,  30.0),
+    "gpt-5.4-mini":                (0.15,   0.6),
+    "gpt-5.2-codex":               (3.0,   15.0),
+    "gpt-5.3-codex":               (3.0,   15.0),
+    "gpt-5.1-codex-max":           (5.0,   20.0),
+    "gpt-5.2":                     (2.5,   10.0),
+    "gpt-5.1-codex-mini":          (0.15,   0.6),
+    "meta/llama-3.3-70b-instruct": (0.35,   0.4),
+}
+
+# ── All slash commands for TAB completion and palette ─────────────────────────
+_ALL_COMMANDS: list[tuple[str, str]] = [
+    ("/api-key",          "Save/clear server API key"),
+    ("/api-key-nvidia",   "Save/clear NVIDIA direct API key"),
+    ("/codex-login",      "Sign in to OpenAI (Codex Direct)"),
+    ("/codex-logout",     "Remove OpenAI credentials"),
+    ("/models",           "Interactive model selector (↑↓ arrows)"),
+    ("/mode",             "Quick-switch mode: claude, default"),
+    ("/model-info",       "Show current model, provider, effort, cost"),
+    ("/effort",           "Set reasoning effort: low, medium, high, very-high"),
+    ("/plan",             "Toggle plan-before-respond mode"),
+    ("/cmd",              "Command palette — search all commands"),
+    ("/branch",           "Conversation branching: save, load, list, clear"),
+    ("/cost",             "Show session cost estimate"),
+    ("/cost-on",          "Enable per-response cost display"),
+    ("/cost-off",         "Disable per-response cost display"),
+    ("/context-limit",    "Set context window trim threshold (tokens)"),
+    ("/clear",            "Clear terminal screen"),
+    ("/retry",            "Resend the last user message"),
+    ("/copy",             "Copy last AI response to clipboard"),
+    ("/word-count",       "Word/character count of last response"),
+    ("/timestamps",       "Toggle timestamps: on|off"),
+    ("/highlight",        "Toggle syntax highlighting: on|off"),
+    ("/tokens",           "Toggle token count: on|off"),
+    ("/remember",         "Save a persistent memory note"),
+    ("/memory",           "List/search memory notes"),
+    ("/forget",           "Remove a memory by ID"),
+    ("/prompt-save",      "Save a prompt to the library"),
+    ("/prompt-run",       "Send a saved prompt"),
+    ("/prompts",          "List/manage saved prompts"),
+    ("/alias",            "Create a command alias"),
+    ("/aliases",          "List saved aliases"),
+    ("/alias-remove",     "Remove an alias"),
+    ("/history",          "List saved chat sessions"),
+    ("/resume",           "Load a previous session"),
+    ("/export",           "Export current session to markdown"),
+    ("/compare",          "Compare two models on the same message"),
+    ("/index",            "Index a file/directory for RAG context"),
+    ("/task",             "Run a background task"),
+    ("/task-status",      "Show background task status"),
+    ("/task-result",      "Print a completed task result"),
+    ("/role",             "Manage AI personas: save, load, list, remove"),
+    ("/macro",            "Record/replay command macros"),
+    ("/attach",           "Attach a file or image to the next message"),
+    ("/repl",             "Open an interactive Python REPL"),
+    ("/audit",            "View tool execution audit log"),
+    ("/voice",            "Toggle voice input: on|off"),
+    ("/shell-init",       "Print shell alias script for bash/fish"),
+    ("/themes",           "Switch theme: midnight, light, midnight-cb, light-cb"),
+    ("/theme-load",       "Load a custom .mai theme file"),
+    ("/theme-unload",     "Remove the active custom theme"),
+    ("/approvals",        "Show/clear Always Allow rules"),
+    ("/custom",           "Configure a custom OpenAI-compatible endpoint"),
+    ("/add-ollama",       "Add an Ollama provider"),
+    ("/change-ollama",    "Update an Ollama provider"),
+    ("/remove-ollama",    "Remove an Ollama provider"),
+    ("/fileslist",        "Show workspace files with icons"),
+    ("/init",             "Generate MAHANAI.md for the workspace"),
+    ("/plugin-load",      "Load a .mmd plugin file"),
+    ("/plugin-list",      "Show all loaded plugins"),
+    ("/plugin-unload",    "Unload a plugin by name"),
+    ("/store",            "Plugin store: browse, search, install, upload"),
+    ("/help",             "Show all available commands"),
+    ("/exit",             "Exit MahanAI"),
+    ("/quit",             "Exit MahanAI"),
+]
+
+_SLASH_COMPLETIONS: list[str] = [c for c, _ in _ALL_COMMANDS]
+
+
+def _setup_tab_completion() -> None:
+    try:
+        import readline
+        def _completer(text: str, state: int) -> str | None:
+            options = [c for c in _SLASH_COMPLETIONS if c.startswith(text)]
+            return options[state] if state < len(options) else None
+        readline.set_completer(_completer)
+        readline.parse_and_bind("tab: complete")
+        readline.set_completer_delims(" \t\n")
+    except ImportError:
+        pass
+
+
+def _run_onboarding_wizard() -> None:
+    """First-run interactive setup wizard."""
+    print(f"\n{C.OK}Welcome to MahanAI Max 2.0!{C.RST}")
+    print(f"{C.DIM}Let's get you set up in 60 seconds.{C.RST}\n")
+
+    print(f"{C.DIM}Choose your default model:{C.RST}")
+    print(f"  {C.OK}1{C.RST}  Claude Haiku 4.5   {C.DIM}(fast, free via Claude CLI){C.RST}")
+    print(f"  {C.OK}2{C.RST}  Claude Sonnet 4.6  {C.DIM}(balanced, via Claude CLI){C.RST}")
+    print(f"  {C.OK}3{C.RST}  Llama 3.3 70B      {C.DIM}(NVIDIA NIM — needs API key){C.RST}")
+    print(f"  {C.OK}4{C.RST}  Custom / Ollama    {C.DIM}(configure later with /custom or /add-ollama){C.RST}")
+    choice = input(f"  {C.DIM}Choice [1]: {C.RST}").strip() or "1"
+
+    if choice == "3":
+        key = input(f"  {C.DIM}NVIDIA API key (leave blank to skip): {C.RST}").strip()
+        if key:
+            from mahanai.config import save_nvidia_api_key
+            save_nvidia_api_key(key)
+            print(f"  {C.OK}NVIDIA key saved.{C.RST}")
+    elif choice in ("1", "2"):
+        print(f"  {C.DIM}Claude CLI mode selected. Make sure 'claude' is on your PATH.{C.RST}")
+
+    print(f"\n{C.OK}5 commands to know:{C.RST}")
+    print(f"  {C.OK}/models{C.RST}   {C.DIM}switch models interactively{C.RST}")
+    print(f"  {C.OK}/cmd{C.RST}      {C.DIM}search all commands (command palette){C.RST}")
+    print(f"  {C.OK}/remember{C.RST} {C.DIM}save a persistent note{C.RST}")
+    print(f"  {C.OK}/branch{C.RST}   {C.DIM}save/load conversation branches{C.RST}")
+    print(f"  {C.OK}/help{C.RST}     {C.DIM}show all 60+ commands{C.RST}")
+
+    print(f"\n{C.DIM}TAB completes slash commands. Type /help anytime.{C.RST}\n")
+    mark_onboarding_complete()
 
 _EFFORT_CODEX: dict[str, str] = {
     "low":       "low",
@@ -725,7 +861,10 @@ def _stream_wham(
         if not tool_calls:
             break
 
-        # Execute tools and append results to input for the next round
+        # Execute tools (batch-approve + parallel for multiple calls)
+        calls_list = [(cid, call["name"], "".join(call["args"])) for cid, call in tool_calls.items()]
+        results_map = batch_approve_and_execute(calls_list, ws)
+
         new_items: list[dict] = []
         for cid, call in tool_calls.items():
             args_str = "".join(call["args"])
@@ -735,11 +874,10 @@ def _stream_wham(
                 "name": call["name"],
                 "arguments": args_str,
             })
-            result = execute_tool(call["name"], args_str, ws)
             new_items.append({
                 "type": "function_call_output",
                 "call_id": cid,
-                "output": result,
+                "output": results_map.get(cid, "{}"),
             })
         input_msgs = input_msgs + new_items
         print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
@@ -1145,6 +1283,41 @@ def _highlight_response(response: str) -> None:
         pass
 
 
+def _trim_context_if_needed(history: list[dict], limit: int) -> int:
+    """Summarize old messages when total estimated tokens exceeds limit. Returns # removed."""
+    if limit <= 0:
+        return 0
+    total = sum(_estimate_tokens(str(m.get("content", ""))) for m in history)
+    if total <= limit:
+        return 0
+    # Keep: system prompt [0], last 8 messages, drop the middle
+    if len(history) <= 10:
+        return 0
+    system = history[0]
+    recent = history[-8:]
+    old = history[1 : len(history) - 8]
+    summary_lines = []
+    for m in old:
+        role = m.get("role", "")
+        content = str(m.get("content", ""))
+        if isinstance(m.get("content"), list):
+            content = " ".join(
+                p.get("text", "") for p in m["content"] if isinstance(p, dict)
+            )
+        snippet = content[:300].replace("\n", " ")
+        if snippet:
+            summary_lines.append(f"{role.upper()}: {snippet}")
+    summary = (
+        "[Context trimmed — earlier conversation summary]\n"
+        + "\n".join(summary_lines[:30])
+    )
+    history.clear()
+    history.append(system)
+    history.append({"role": "system", "content": summary})
+    history.extend(recent)
+    return len(old)
+
+
 def _index_file(path: Path, chunks: list[dict]) -> int:
     """Chunk a file into ~600-char segments and append to chunks list. Returns count added."""
     try:
@@ -1273,6 +1446,11 @@ def _print_help() -> None:
         f"  /timestamps on|off          Show timestamps on messages\n"
         f"  /highlight on|off           Syntax-highlight code blocks after response\n"
         f"  /tokens on|off              Show token estimate after each response\n"
+        f"  /cost                       Show session cost estimate\n"
+        f"  /cost-on|off                Toggle per-response cost display\n"
+        f"  /context-limit [tokens]     Set/show auto-trim threshold (0 to disable)\n"
+        f"  /cmd [query]                Command palette — search all commands\n"
+        f"  /branch save|load|list|clear  Conversation branching (session-only)\n"
         f"\n"
         f"  /remember <text>            Save a persistent memory note\n"
         f"  /memory                     List memory notes\n"
@@ -1447,6 +1625,18 @@ def main() -> None:
     last_user_input: str | None = None
     last_ai_reply: str | None = None
     _session_id: str = _new_session_id()
+
+    # Cost tracker
+    show_cost: bool = load_cost_setting()
+    _session_input_tokens: int = 0
+    _session_output_tokens: int = 0
+    _session_cost_usd: float = 0.0
+
+    # Context window manager
+    _context_limit: int = load_context_limit()
+
+    # Conversation branches (session-only, not persisted)
+    _branches: dict[str, list[dict]] = {}
     _tasks: dict[str, dict] = _BACKGROUND_TASKS
     _aliases: dict[str, str] = load_aliases()
     _index_chunks: list[dict] = load_index_documents()
@@ -1476,10 +1666,14 @@ def main() -> None:
             active_model_idx = _env_idx
         else:
             _env_model_unrecognized = True
+    _setup_tab_completion()
     _update_thread = _start_update_check()
     print_startup_banner(AVAILABLE_MODELS[active_model_idx]["label"], compact=compact)
     print()
     _print_update_notice(_update_thread)
+
+    if not is_onboarding_complete():
+        _run_onboarding_wizard()
     if _env_model_unrecognized:
         print(f"{C.WARN}MAHANAI_MODEL={_env_model!r} not found in model list; using default.{C.RST}\n")
 
@@ -2135,6 +2329,111 @@ def main() -> None:
             if _plugin_handled:
                 continue
 
+            # ── Command palette ───────────────────────────────────────────────
+            if cmd in ("/cmd", "/palette"):
+                _q = rest.strip().lower()
+                _hits = [
+                    (c, d) for c, d in _ALL_COMMANDS
+                    if not _q or _q in c.lower() or _q in d.lower()
+                ]
+                if not _hits:
+                    print(f"{C.DIM}No commands matching '{rest.strip()}'.{C.RST}\n")
+                else:
+                    header = f"Commands matching '{rest.strip()}'" if _q else "All commands"
+                    print(f"{C.DIM}{header}:{C.RST}")
+                    for _c, _d in _hits:
+                        print(f"  {C.OK}{_c:<28}{C.RST}  {C.DIM}{_d}{C.RST}")
+                    print()
+                continue
+
+            # ── Conversation branching ────────────────────────────────────────
+            if cmd == "/branch":
+                _bparts = rest.split(None, 1)
+                _baction = _bparts[0].lower() if _bparts else ""
+                _barg = _bparts[1].strip() if len(_bparts) > 1 else ""
+                if _baction == "save":
+                    if not _barg:
+                        print(f"{C.ERR}Usage: /branch save <name>{C.RST}\n")
+                    else:
+                        _branches[_barg] = [m.copy() for m in history]
+                        print(f"{C.OK}Branch '{_barg}' saved{C.RST} {C.DIM}({len(history)} messages, session-only){C.RST}\n")
+                elif _baction == "load":
+                    if not _barg:
+                        print(f"{C.ERR}Usage: /branch load <name>{C.RST}\n")
+                    elif _barg not in _branches:
+                        print(f"{C.ERR}Branch '{_barg}' not found. Use /branch list.{C.RST}\n")
+                    else:
+                        history.clear()
+                        history.extend([m.copy() for m in _branches[_barg]])
+                        print(f"{C.OK}Branch '{_barg}' loaded{C.RST} {C.DIM}({len(history)} messages){C.RST}\n")
+                elif _baction == "list":
+                    if not _branches:
+                        print(f"{C.DIM}No branches saved yet (branches are session-only).{C.RST}\n")
+                    else:
+                        print(f"{C.DIM}Branches:{C.RST}")
+                        for _bn, _bh in _branches.items():
+                            _bmsg = len([m for m in _bh if m["role"] != "system"])
+                            print(f"  {C.OK}{_bn}{C.RST}  {C.DIM}({_bmsg} messages){C.RST}")
+                        print()
+                elif _baction == "clear":
+                    _branches.clear()
+                    print(f"{C.OK}All branches cleared.{C.RST}\n")
+                else:
+                    print(
+                        f"{C.DIM}Branch commands:{C.RST}\n"
+                        f"  /branch save <name>   Save current conversation as a branch\n"
+                        f"  /branch load <name>   Switch to a saved branch\n"
+                        f"  /branch list          List saved branches (session-only)\n"
+                        f"  /branch clear         Clear all branches\n"
+                    )
+                continue
+
+            # ── Cost tracker ──────────────────────────────────────────────────
+            if cmd == "/cost":
+                _sel_cost = AVAILABLE_MODELS[active_model_idx]
+                _mk = _sel_cost.get("claude_model") or _sel_cost.get("name", "")
+                _pr = _MODEL_PRICING.get(_mk)
+                print(f"{C.DIM}Session cost estimate:{C.RST}")
+                print(f"  Input tokens:   ~{_session_input_tokens:,}")
+                print(f"  Output tokens:  ~{_session_output_tokens:,}")
+                if _pr:
+                    print(f"  Estimated cost: ~${_session_cost_usd:.4f} USD")
+                    print(f"  {C.DIM}({_mk}: ${_pr[0]}/1M in, ${_pr[1]}/1M out){C.RST}")
+                else:
+                    print(f"  {C.DIM}(no pricing data for {_mk}){C.RST}")
+                print(f"  Cost display: {'on' if show_cost else 'off'}  (toggle with /cost-on|off)\n")
+                continue
+            if cmd == "/cost-on":
+                show_cost = True
+                save_cost_setting(True)
+                print(f"{C.OK}Cost display ON{C.RST} {C.DIM}(shown after each response){C.RST}\n")
+                continue
+            if cmd == "/cost-off":
+                show_cost = False
+                save_cost_setting(False)
+                print(f"{C.OK}Cost display OFF{C.RST}\n")
+                continue
+
+            # ── Context window limit ──────────────────────────────────────────
+            if cmd == "/context-limit":
+                _clarg = rest.strip()
+                if not _clarg:
+                    print(
+                        f"{C.DIM}Context limit: {_context_limit:,} tokens{C.RST} "
+                        f"{C.DIM}(set with /context-limit <tokens>, 0 to disable){C.RST}\n"
+                    )
+                else:
+                    try:
+                        _context_limit = int(_clarg.replace(",", ""))
+                        save_context_limit(_context_limit)
+                        if _context_limit == 0:
+                            print(f"{C.OK}Context trimming disabled.{C.RST}\n")
+                        else:
+                            print(f"{C.OK}Context limit set to {_context_limit:,} tokens.{C.RST}\n")
+                    except ValueError:
+                        print(f"{C.ERR}Usage: /context-limit <number>   e.g. /context-limit 80000{C.RST}\n")
+                continue
+
             # ── Quick utility commands ────────────────────────────────────────
             if cmd == "/clear":
                 os.system("clear" if os.name != "nt" else "cls")
@@ -2144,12 +2443,22 @@ def main() -> None:
 
             if cmd == "/model-info":
                 sel = AVAILABLE_MODELS[active_model_idx]
+                _mi_key = sel.get("claude_model") or sel.get("name", "")
+                _mi_pr = _MODEL_PRICING.get(_mi_key)
+                _mi_price = (
+                    f"${_mi_pr[0]}/1M in, ${_mi_pr[1]}/1M out" if _mi_pr else "no pricing data"
+                )
                 print(
                     f"{C.DIM}Model:{C.RST}   {sel['label']}  {C.DIM}({sel['name']}){C.RST}\n"
                     f"{C.DIM}Group:{C.RST}   {sel['group']}\n"
                     f"{C.DIM}Mode:{C.RST}    {sel['mode']}\n"
                     f"{C.DIM}Effort:{C.RST}  {current_effort}\n"
                     f"{C.DIM}Plan:{C.RST}    {'on' if plan_mode else 'off'}\n"
+                    f"{C.DIM}Price:{C.RST}   {_mi_price}\n"
+                    f"{C.DIM}Cost:{C.RST}    session ~${_session_cost_usd:.4f} USD  "
+                    f"({_session_input_tokens:,} in / {_session_output_tokens:,} out tokens)\n"
+                    f"{C.DIM}Ctx:{C.RST}     limit {_context_limit:,} tokens  "
+                    f"{'(auto-trim on)' if _context_limit > 0 else '(disabled)'}\n"
                 )
                 continue
 
@@ -2781,15 +3090,31 @@ def main() -> None:
         effort_instr = "" if is_haiku else _EFFORT_INSTRUCTIONS.get(current_effort, "")
         codex_effort = _EFFORT_CODEX.get(current_effort, "medium")
 
-        def _post_reply(reply: str) -> None:
-            """Run after each successful AI reply: highlight, token count, auto-save."""
-            nonlocal last_ai_reply
+        def _post_reply(reply: str, input_text: str = "") -> None:
+            """Run after each successful AI reply: highlight, token count, cost, auto-save."""
+            nonlocal last_ai_reply, _session_input_tokens, _session_output_tokens, _session_cost_usd
             last_ai_reply = reply
             if highlight_enabled:
                 _highlight_response(reply)
+            _in_tok = _estimate_tokens(input_text) if input_text else 0
+            _out_tok = _estimate_tokens(reply)
+            _session_input_tokens += _in_tok
+            _session_output_tokens += _out_tok
+            _model_key = selected.get("claude_model") or selected.get("name", "")
+            _pricing = _MODEL_PRICING.get(_model_key)
+            if _pricing:
+                _turn_cost = (_in_tok * _pricing[0] + _out_tok * _pricing[1]) / 1_000_000
+                _session_cost_usd += _turn_cost
+            else:
+                _turn_cost = 0.0
             if show_tokens:
-                _tok = _estimate_tokens(reply)
-                print(f"{C.DIM}~{_tok} tokens{C.RST}\n")
+                print(f"{C.DIM}~{_out_tok} tokens{C.RST}\n")
+            if show_cost and _pricing:
+                print(f"{C.DIM}~${_turn_cost:.4f} this turn  (session: ${_session_cost_usd:.4f}){C.RST}\n")
+            # Context window trim
+            trimmed = _trim_context_if_needed(history, _context_limit)
+            if trimmed:
+                print(f"{C.DIM}[Context trimmed: {trimmed} old messages summarized to stay within {_context_limit:,} token limit]{C.RST}\n")
             _auto_save_session(_session_id, history, selected["label"])
 
         # Route based on selected model
@@ -2800,7 +3125,7 @@ def main() -> None:
             print("\n")
             history.append({"role": "user", "content": effective_user})
             history.append({"role": "assistant", "content": _claude_reply})
-            _post_reply(_claude_reply)
+            _post_reply(_claude_reply, effective_user)
             continue
 
         def _user_content(text: str) -> Any:
@@ -2830,7 +3155,7 @@ def main() -> None:
                 continue
             print("\n")
             history.append({"role": "assistant", "content": reply})
-            _post_reply(reply)
+            _post_reply(reply, effective_user)
             continue
 
         if selected["mode"] == "codex_indirect":
@@ -2847,7 +3172,7 @@ def main() -> None:
                     continue
                 print("\n")
                 history.append({"role": "assistant", "content": reply})
-                _post_reply(reply)
+                _post_reply(reply, effective_user)
             else:
                 print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
                 _run_codex_cli(effective_user, model=selected["name"])
@@ -2873,7 +3198,7 @@ def main() -> None:
                 continue
             print("\n")
             history.append({"role": "assistant", "content": reply})
-            _post_reply(reply)
+            _post_reply(reply, effective_user)
             continue
 
         if selected["mode"] == "custom":
@@ -2901,7 +3226,7 @@ def main() -> None:
                 continue
             print("\n")
             history.append({"role": "assistant", "content": reply})
-            _post_reply(reply)
+            _post_reply(reply, effective_user)
             continue
 
         if selected["mode"] == "nvidia_direct":
@@ -2939,4 +3264,4 @@ def main() -> None:
             continue
         print("\n")
         history.append({"role": "assistant", "content": reply})
-        _post_reply(reply)
+        _post_reply(reply, effective_user)

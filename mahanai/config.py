@@ -459,6 +459,42 @@ def remove_macro(name: str) -> bool:
     return True
 
 
+# ── Onboarding ────────────────────────────────────────────────────────────────
+
+def is_onboarding_complete() -> bool:
+    return bool(_read_config().get("onboarding_complete", False))
+
+
+def mark_onboarding_complete() -> None:
+    data = _read_config()
+    data["onboarding_complete"] = True
+    _write_config(data)
+
+
+# ── Cost display setting ──────────────────────────────────────────────────────
+
+def save_cost_setting(enabled: bool) -> None:
+    data = _read_config()
+    data["show_cost"] = enabled
+    _write_config(data)
+
+
+def load_cost_setting() -> bool:
+    return bool(_read_config().get("show_cost", False))
+
+
+# ── Context window limit ──────────────────────────────────────────────────────
+
+def save_context_limit(tokens: int) -> None:
+    data = _read_config()
+    data["context_limit_tokens"] = tokens
+    _write_config(data)
+
+
+def load_context_limit() -> int:
+    return int(_read_config().get("context_limit_tokens", 80_000))
+
+
 # ── Audit log ─────────────────────────────────────────────────────────────────
 
 def audit_log_path() -> Path:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
 import re
@@ -421,11 +422,54 @@ def read_file(base: Path, args: dict[str, object]) -> str:
         return json.dumps({"error": str(e), "path": str(path)})
 
 
+def _show_write_diff(path: Path, new_content: str) -> None:
+    """Print a colored unified diff when overwriting an existing file."""
+    if not path.is_file():
+        return
+    try:
+        old_content = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    if old_content == new_content:
+        print(f"  {C.DIM}(no changes){C.RST}")
+        return
+    old_lines = old_content.splitlines(keepends=True)
+    new_lines = new_content.splitlines(keepends=True)
+    diff = list(difflib.unified_diff(
+        old_lines, new_lines,
+        fromfile=f"a/{path.name}", tofile=f"b/{path.name}", n=3,
+    ))
+    if not diff:
+        return
+    print(f"\n{C.DIM}  Diff ({path.name}):{C.RST}")
+    shown = 0
+    for line in diff:
+        stripped = line.rstrip("\n")
+        if stripped.startswith("+++") or stripped.startswith("---"):
+            print(f"  {C.DIM}{stripped}{C.RST}")
+        elif stripped.startswith("+"):
+            print(f"  \033[32m{stripped}\033[0m")
+        elif stripped.startswith("-"):
+            print(f"  \033[31m{stripped}\033[0m")
+        elif stripped.startswith("@@"):
+            print(f"  {C.WARN}{stripped}{C.RST}")
+        else:
+            print(f"  {C.DIM}{stripped}{C.RST}")
+        shown += 1
+        if shown >= 60:
+            remaining = len(diff) - shown
+            if remaining > 0:
+                print(f"  {C.DIM}… {remaining} more lines not shown{C.RST}")
+            break
+    print()
+
+
 def write_file(base: Path, args: dict[str, object]) -> str:
     raw_path = str(args.get("path", ""))
     path = _resolve_path(base, raw_path)
     content = str(args.get("content", ""))
 
+    _show_write_diff(path, content)
     approved, denial_msg = _approve_file_op("write_file", str(path))
     if not approved:
         return json.dumps({"error": "user_denied", "message": denial_msg, "path": str(path)})
@@ -653,6 +697,127 @@ def web_search(base: Path, args: dict[str, object]) -> str:
         return json.dumps({"query": query, "results": results})
     except Exception as e:
         return json.dumps({"error": str(e), "query": query})
+
+
+def batch_approve_and_execute(
+    calls: list[tuple[str, str, str]],  # [(call_id, name, arguments_json), ...]
+    workspace: Path,
+) -> dict[str, str]:
+    """
+    Batch-approve and (where safe) execute tools in parallel.
+    Shows all pending tools, asks for batch approval, then runs them.
+    Returns {call_id: result_json}.
+    """
+    import concurrent.futures
+
+    if not calls:
+        return {}
+
+    if len(calls) == 1:
+        cid, name, args_json = calls[0]
+        return {cid: execute_tool(name, args_json, workspace)}
+
+    # Show all pending tools
+    print(f"\n{C.WARN}  {len(calls)} tools requested:{C.RST}")
+    for i, (cid, name, args_json) in enumerate(calls, 1):
+        try:
+            args = json.loads(normalize_tool_arguments_json(args_json))
+        except Exception:
+            args = {}
+        # Build a short display of the args
+        if name == "run_command":
+            detail = args.get("command", "")[:80]
+        elif name in ("read_file", "write_file", "append_file"):
+            detail = args.get("path", "")
+        elif name == "web_search":
+            detail = args.get("query", "")[:60]
+        elif name == "fetch_url":
+            detail = args.get("url", "")[:60]
+        else:
+            detail = str(args)[:60]
+        print(f"  {C.DIM}{i}. {name}{C.RST}  {C.DIM}{detail}{C.RST}")
+
+    print(f"  {C.OK}[A]{C.RST} Approve all  {C.DIM}[R]{C.RST} Review each  {C.ERR}[D]{C.RST} Deny all")
+    ans = _read_input("  > ").strip().lower()
+
+    results: dict[str, str] = {}
+
+    if ans in ("d", "deny"):
+        for cid, name, _ in calls:
+            results[cid] = json.dumps({"error": "user_denied", "message": "Denied by user."})
+        return results
+
+    if ans in ("r", "review"):
+        for cid, name, args_json in calls:
+            results[cid] = execute_tool(name, args_json, workspace)
+        return results
+
+    # Approve all — execute in parallel
+    print(f"  {C.OK}Running {len(calls)} tools in parallel...{C.RST}")
+
+    def _run_one(call: tuple[str, str, str]) -> tuple[str, str]:
+        cid, name, args_json = call
+        canon = normalize_tool_arguments_json(args_json)
+        try:
+            args = json.loads(canon)
+        except json.JSONDecodeError:
+            return cid, json.dumps({"error": "invalid JSON arguments"})
+        # Execute without interactive approval (already batch-approved above)
+        if name == "run_command":
+            cmd = str(args.get("command", "")).strip()
+            cwd_raw = args.get("cwd")
+            timeout = int(args.get("timeout_seconds") or 120)
+            cwd = workspace
+            if isinstance(cwd_raw, str) and cwd_raw.strip():
+                cwd = _resolve_path(workspace, cwd_raw)
+            print(f"\n{C.OK}⚡Running:{C.RST} {cmd}", flush=True)
+            try:
+                proc = subprocess.run(
+                    cmd, shell=True, cwd=str(cwd),
+                    capture_output=True, text=True,
+                    timeout=max(1, timeout), env=os.environ.copy(),
+                )
+                out = (proc.stdout or "") + (proc.stderr or "")
+                if len(out) > 100_000:
+                    out = out[:100_000] + "\n… [truncated]"
+                return cid, json.dumps({"exit_code": proc.returncode, "output": out, "cwd": str(cwd)})
+            except subprocess.TimeoutExpired:
+                return cid, json.dumps({"error": f"timed out after {timeout}s", "command": cmd})
+            except OSError as e:
+                return cid, json.dumps({"error": str(e), "command": cmd})
+        elif name == "read_file":
+            path = _resolve_path(workspace, str(args.get("path", "")))
+            if not path.is_file():
+                return cid, json.dumps({"error": "not a file", "path": str(path)})
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+                if len(text) > 200_000:
+                    text = text[:200_000] + "\n… [truncated]"
+                return cid, json.dumps({"path": str(path), "content": text})
+            except OSError as e:
+                return cid, json.dumps({"error": str(e)})
+        elif name == "list_directory":
+            raw = args.get("path")
+            path = workspace if not isinstance(raw, str) or not raw.strip() else _resolve_path(workspace, raw)
+            if not path.is_dir():
+                return cid, json.dumps({"error": "not a directory", "path": str(path)})
+            try:
+                entries = sorted(path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+                rows = [{"name": p.name, "type": "dir" if p.is_dir() else "file"} for p in entries[:500]]
+                return cid, json.dumps({"path": str(path), "entries": rows})
+            except OSError as e:
+                return cid, json.dumps({"error": str(e)})
+        else:
+            # Fallback: sequential with standard approval
+            return cid, execute_tool(name, args_json, workspace)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(calls), 8)) as executor:
+        futures = [executor.submit(_run_one, call) for call in calls]
+        for f in concurrent.futures.as_completed(futures):
+            cid, result = f.result()
+            results[cid] = result
+
+    return results
 
 
 def execute_tool(name: str, arguments_json: str, workspace: Path) -> str:

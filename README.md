@@ -81,6 +81,26 @@ Requests are automatically converted between formats:
 
 Streaming SSE is preserved end-to-end for all routes.
 
+### Web UI
+
+When the server is running, a browser-based chat interface is available at:
+
+```
+http://localhost:8080
+```
+
+Features:
+- **All configured models** available in a dropdown (Claude models listed first)
+- **Streaming responses** with live token-by-token rendering
+- **Markdown rendering** — headings, bold/italic, bullet lists, code blocks with language badges, blockquotes, links
+- **Copy button** on every message
+- **New Chat** button to reset the conversation
+- Typing indicator while the model is responding
+
+The web UI works without any authentication — it connects to the same gateway server as any other client.
+
+---
+
 ### Authentication
 
 If `--api-key` is supplied, the server validates every incoming request:
@@ -552,8 +572,125 @@ Once saved, select **Custom Endpoint** from `/models` to start using it. The con
 | `/store search <query>` | Search plugins by keyword |
 | `/store install <user/codename>` | Download and install a plugin from the store |
 | `/store upload <path>` | Publish your `.mmd` plugin to the store |
+| `/cmd [query]` | Open the command palette — fuzzy-search all commands |
+| `/branch save [name]` | Save the current conversation as a named branch |
+| `/branch load <name>` | Restore a saved branch |
+| `/branch list` | List all saved branches |
+| `/branch clear` | Delete all saved branches |
+| `/cost` | Show session token and cost totals |
+| `/cost-on` | Show estimated cost after every response |
+| `/cost-off` | Hide per-response cost display |
+| `/context-limit [N]` | Set the token threshold for auto-trimming history (default: 80,000) |
+| `/memory add <text>` | Save a persistent memory |
+| `/memory list` | List all memories |
+| `/memory remove <id>` | Delete a memory by ID |
 | `/help` | Show help |
 | `/exit` or `/quit` | Leave |
+
+---
+
+## TAB Completion
+
+On Linux and macOS, pressing `Tab` at the prompt autocompletes slash commands:
+
+```
+/mod<Tab>   →   /models
+/api<Tab>   →   /api-key
+```
+
+All 60+ built-in commands are registered. TAB completion is automatic — no setup required.
+
+---
+
+## Command Palette
+
+`/cmd` opens a fuzzy-search palette over every available command:
+
+```
+/cmd diff
+```
+
+```
+  Matching commands for "diff":
+
+    /model-info     Show current model, pricing, session cost
+    /context-limit  Set auto-trim token threshold
+```
+
+Run without arguments to browse all commands:
+
+```
+/cmd
+```
+
+---
+
+## Cost Tracking
+
+MahanAI tracks token usage and API cost per session.
+
+```
+/cost
+```
+
+```
+  Session cost
+  Input tokens  : 12,450
+  Output tokens :  3,820
+  Estimated cost: $0.0182
+```
+
+Enable per-response cost display so each reply shows its cost inline:
+
+```
+/cost-on    # show cost after every response
+/cost-off   # hide it
+```
+
+Pricing is built in for all supported models. Custom and Ollama models show token counts without a cost estimate.
+
+---
+
+## Context Window Management
+
+MahanAI automatically trims conversation history when it approaches the model's token limit. The default threshold is **80,000 tokens**.
+
+When the threshold is hit, older messages are summarized into a single context block and the most recent exchanges are kept in full.
+
+To adjust the threshold:
+
+```
+/context-limit 60000    # tighten it
+/context-limit 120000   # loosen it
+/context-limit          # show current setting
+```
+
+---
+
+## Conversation Branching
+
+Save the current conversation state as a named branch and restore it later to try a different approach:
+
+```
+/branch save first-attempt     # snapshot current history
+/branch load first-attempt     # restore it
+/branch list                   # show all saved branches
+/branch clear                  # delete all branches
+```
+
+Branches are stored in memory for the current session. Use them to explore multiple directions from the same starting point without losing any thread.
+
+---
+
+## Onboarding
+
+On first launch, MahanAI runs a short interactive wizard to help you get started:
+
+- Choose your default model
+- Enter an API key if needed
+- See the most useful commands
+
+The wizard runs once and is skipped on all subsequent launches.
 
 ---
 
@@ -688,9 +825,49 @@ Every tool action is shown to you for approval before it runs (see [Command Appr
 |---|---|
 | `run_command` | Run a shell command |
 | `read_file` | Read a file |
-| `write_file` | Create or overwrite a file |
+| `write_file` | Create or overwrite a file — shows a colored diff first |
 | `append_file` | Append to a file |
 | `list_directory` | List directory contents |
+| `fetch_url` | Fetch the text content of a URL |
+| `python_repl` | Run Python code in an isolated subprocess |
+| `web_search` | Search DuckDuckGo, returns titles, URLs, and snippets |
+
+### Inline diff viewer
+
+Before any `write_file` approval prompt, MahanAI shows a colored unified diff of the changes the model wants to make:
+
+```
+  Write File
+  /home/user/project/main.py
+
+  --- a/main.py
+  +++ b/main.py
+  @@ -10,7 +10,7 @@
+  -    return x + 1
+  +    return x + 2
+
+  [A] Allow    [W] Always Allow (Write / Create File)    [D] Deny
+  >
+```
+
+This lets you review exactly what will change before committing. For new files, the diff is skipped (nothing to compare against).
+
+### Parallel tool execution
+
+When the model requests multiple tools at once (e.g. from Codex WHAM), MahanAI shows all of them together in a single batch approval prompt:
+
+```
+  3 tool calls requested:
+
+    [1] run_command   npm install
+    [2] read_file     package.json
+    [3] write_file    src/index.js
+
+  [A] Approve all    [R] Review one-by-one    [D] Deny all
+  >
+```
+
+After approval, all tools run concurrently (up to 8 in parallel) and results are returned together.
 
 ---
 
