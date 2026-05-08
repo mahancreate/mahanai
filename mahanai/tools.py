@@ -16,6 +16,18 @@ from mahanai import colors as C
 
 _JSON_BAD_BACKSLASH = re.compile(r'\\(?!["\\/bfnrtu]|u[0-9a-fA-F]{4})')
 
+# ── Autonomous mode ───────────────────────────────────────────────────────────
+_AUTONOMOUS_MODE: bool = False
+
+
+def set_autonomous_mode(enabled: bool) -> None:
+    global _AUTONOMOUS_MODE
+    _AUTONOMOUS_MODE = enabled
+
+
+def is_autonomous_mode() -> bool:
+    return _AUTONOMOUS_MODE
+
 
 def repair_invalid_json_escapes(raw: str) -> str:
     s = raw
@@ -188,6 +200,36 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "edit_file",
+            "description": (
+                "Apply a targeted string replacement to an existing file. "
+                "Reads the file, finds old_string (must appear exactly once), replaces it with new_string, "
+                "shows a diff, then saves. Fails if old_string is not found or appears more than once. "
+                "Prefer this over write_file for surgical, line-level edits."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the file.",
+                    },
+                    "old_string": {
+                        "type": "string",
+                        "description": "Exact text to find and replace (must be unique in the file).",
+                    },
+                    "new_string": {
+                        "type": "string",
+                        "description": "Text to replace old_string with.",
+                    },
+                },
+                "required": ["path", "old_string", "new_string"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "web_search",
             "description": "Search the web using DuckDuckGo. Returns titles, URLs, and snippets for top results.",
             "parameters": {
@@ -268,6 +310,11 @@ def _approve_command(cmd: str) -> tuple[bool, str]:
     prefix = _command_prefix(cmd)
     high_risk = _is_high_risk(cmd)
 
+    # Autonomous mode: auto-approve non-destructive commands
+    if _AUTONOMOUS_MODE and not high_risk:
+        print(f"\n{C.DIM}  [AUTO] {cmd}{C.RST}", flush=True)
+        return True, ""
+
     # Always-Allow only applies to normal (non-git, non-gh) commands
     if category == "normal" and not high_risk:
         always = load_always_allowed()
@@ -319,6 +366,10 @@ def _approve_file_op(op: str, display_path: str) -> tuple[bool, str]:
     Returns (approved, denial_message_for_ai).
     """
     from mahanai.config import load_always_allowed, add_always_allowed_file_op
+
+    if _AUTONOMOUS_MODE:
+        print(f"\n{C.DIM}  [AUTO] {op}: {display_path}{C.RST}", flush=True)
+        return True, ""
 
     always = load_always_allowed()
     if op in always.get("file_ops", []):
@@ -699,6 +750,45 @@ def web_search(base: Path, args: dict[str, object]) -> str:
         return json.dumps({"error": str(e), "query": query})
 
 
+def edit_file(base: Path, args: dict[str, object]) -> str:
+    raw_path = str(args.get("path", ""))
+    path = _resolve_path(base, raw_path)
+    old_string = str(args.get("old_string", ""))
+    new_string = str(args.get("new_string", ""))
+
+    if not old_string:
+        return json.dumps({"error": "old_string must not be empty"})
+    if not path.is_file():
+        return json.dumps({"error": "not a file", "path": str(path)})
+
+    try:
+        original = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return json.dumps({"error": str(e), "path": str(path)})
+
+    count = original.count(old_string)
+    if count == 0:
+        return json.dumps({"error": "old_string not found in file", "path": str(path)})
+    if count > 1:
+        return json.dumps({
+            "error": f"old_string appears {count} times — add more surrounding context to make it unique",
+            "path": str(path),
+        })
+
+    new_content = original.replace(old_string, new_string, 1)
+    _show_write_diff(path, new_content)
+
+    approved, denial_msg = _approve_file_op("write_file", str(path))
+    if not approved:
+        return json.dumps({"error": "user_denied", "message": denial_msg, "path": str(path)})
+
+    try:
+        path.write_text(new_content, encoding="utf-8")
+        return json.dumps({"ok": True, "path": str(path)})
+    except OSError as e:
+        return json.dumps({"error": str(e), "path": str(path)})
+
+
 def batch_approve_and_execute(
     calls: list[tuple[str, str, str]],  # [(call_id, name, arguments_json), ...]
     workspace: Path,
@@ -727,7 +817,7 @@ def batch_approve_and_execute(
         # Build a short display of the args
         if name == "run_command":
             detail = args.get("command", "")[:80]
-        elif name in ("read_file", "write_file", "append_file"):
+        elif name in ("read_file", "write_file", "append_file", "edit_file"):
             detail = args.get("path", "")
         elif name == "web_search":
             detail = args.get("query", "")[:60]
@@ -848,6 +938,8 @@ def execute_tool(name: str, arguments_json: str, workspace: Path) -> str:
         result = fetch_url(workspace, args)
     elif name == "python_repl":
         result = python_repl(workspace, args)
+    elif name == "edit_file":
+        result = edit_file(workspace, args)
     elif name == "web_search":
         result = web_search(workspace, args)
     else:

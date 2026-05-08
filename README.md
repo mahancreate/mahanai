@@ -89,15 +89,20 @@ When the server is running, a browser-based chat interface is available at:
 http://localhost:8080
 ```
 
-Features:
-- **All configured models** available in a dropdown (Claude models listed first)
-- **Streaming responses** with live token-by-token rendering
-- **Markdown rendering** — headings, bold/italic, bullet lists, code blocks with language badges, blockquotes, links
-- **Copy button** on every message
-- **New Chat** button to reset the conversation
-- Typing indicator while the model is responding
+You can also open `webui.html` directly in any browser — it connects to `http://localhost:8080` automatically (CORS is allowed from all origins).
 
-The web UI works without any authentication — it connects to the same gateway server as any other client.
+Features:
+- **Model selector** — grouped `<select>` dropdown populated live from `/v1/models` (Anthropic → NVIDIA → Codex order)
+- **Real SSE streaming** — token-by-token rendering via `fetch` + `ReadableStream`
+- **Full markdown rendering** — fenced code blocks with language badge and per-block copy button, inline code, bold/italic, headers, bullet and numbered lists, blockquotes, horizontal rules, tables, links
+- **Session sidebar** — all past conversations stored in `localStorage`; click any to restore it, × to delete; auto-saves after every reply
+- **Auto-restore** — most recent session is reloaded on page open
+- **Hero screen** — shown when the conversation is empty with four prompt suggestion cards
+- **Typing indicator** — animated dots while waiting for the first token
+- **Copy buttons** — on every AI bubble (full message) and inside every code block (just the code)
+- **Status panel** — live server health check every 10 seconds; shows backend URL, model count, CONNECTED / OFFLINE state
+- **Toast notifications** — for copy confirmations and errors
+- **Parallax glow orbs** — follow the mouse cursor
 
 ---
 
@@ -230,6 +235,61 @@ Update available: v4.9.0 → v5.0.0  pip install --upgrade mahanai
 ```
 
 No action is taken automatically — update when you're ready.
+
+---
+
+## Project Config (.mahanairc)
+
+Place a `.mahanairc` file in any project directory and MahanAI will load it automatically on startup. It lets you pre-load context files, auto-install plugins, and activate named package presets — all scoped to that workspace.
+
+```
+/mahanairc       # reload .mahanairc mid-session (no restart needed)
+```
+
+### Syntax
+
+```
+# Comments start with #
+
+# Import a named preset from a package (recognized, no runtime cost)
+import defaults from mahanairc
+import csc from dev-pack
+
+# Apply defaults (no-op built-in, accepted for compatibility)
+defaults(def)
+
+# Load a markdown/text file as AI context (injected into system prompt)
+load(location="$HOME/project/context.md" type=context)
+
+# Auto-load a .mmd plugin
+load(location="$HOME/plugins/my-plugin.mmd" type=mmd)
+
+# Activate named built-in packages
+load(mahanai, python-dev-kit, csc, default)
+
+# Start directive (accepted, no-op)
+start(mahanai)
+```
+
+### Built-in packages
+
+| Package | Effect |
+|---|---|
+| `mahanai`, `default`, `mahanairc` | No-op (self-references) |
+| `python-dev-kit` | Adds Python 3.10+ style guidance to the system prompt |
+| `csc` | Activates a sanity-check pass before every answer |
+| `web-dev-kit` | Adds modern JS/HTML/CSS guidance |
+| `rust-dev-kit` | Adds idiomatic Rust guidance |
+| `go-dev-kit` | Adds idiomatic Go guidance |
+
+### What happens at startup
+
+When MahanAI finds `.mahanairc` in the working directory:
+
+1. `load(location="..." type=context)` files are read and appended to the system prompt
+2. `load(location="..." type=mmd)` plugins are parsed and registered immediately
+3. Built-in package extras are added to the system prompt
+4. A status line prints what was loaded (e.g. `📋 .mahanairc  1 context file(s), 2 package extra(s)`)
 
 ---
 
@@ -584,6 +644,15 @@ Once saved, select **Custom Endpoint** from `/models` to start using it. The con
 | `/memory add <text>` | Save a persistent memory |
 | `/memory list` | List all memories |
 | `/memory remove <id>` | Delete a memory by ID |
+| `/auto on` | Enable autonomous mode — tool calls are auto-approved (destructive commands still prompt) |
+| `/auto off` | Disable autonomous mode, restore normal approval prompts |
+| `/vim on` | Enable readline vi keybindings (`Esc` → normal mode, `i` → insert) |
+| `/vim off` | Restore default emacs/readline keybindings |
+| `/notify [title]` | Send a test desktop notification |
+| `/shell-history` | Show the last 20 commands from bash/zsh history |
+| `/shell-history inject` | Add recent shell history to the AI's context |
+| `/shell-history clear` | Remove injected shell history from context |
+| `/mahanairc` | Reload `.mahanairc` from the current directory without restarting |
 | `/help` | Show help |
 | `/exit` or `/quit` | Leave |
 
@@ -826,15 +895,34 @@ Every tool action is shown to you for approval before it runs (see [Command Appr
 | `run_command` | Run a shell command |
 | `read_file` | Read a file |
 | `write_file` | Create or overwrite a file — shows a colored diff first |
+| `edit_file` | Surgical string replacement in a file — finds `old_string`, replaces with `new_string`, shows diff |
 | `append_file` | Append to a file |
 | `list_directory` | List directory contents |
 | `fetch_url` | Fetch the text content of a URL |
 | `python_repl` | Run Python code in an isolated subprocess |
 | `web_search` | Search DuckDuckGo, returns titles, URLs, and snippets |
 
+### edit\_file — surgical edits
+
+`edit_file` is preferred over `write_file` for targeted changes. It takes `path`, `old_string`, and `new_string`. The `old_string` must appear **exactly once** in the file — if it appears zero times or multiple times the tool returns an error rather than making a guess. A colored diff is shown before the approval prompt.
+
+```
+  Edit File
+  /home/user/project/main.py
+
+  --- a/main.py
+  +++ b/main.py
+  @@ -10,1 +10,1 @@
+  -    return x + 1
+  +    return x + 2
+
+  [A] Allow    [W] Always Allow (Write / Create File)    [D] Deny
+  >
+```
+
 ### Inline diff viewer
 
-Before any `write_file` approval prompt, MahanAI shows a colored unified diff of the changes the model wants to make:
+Before any `write_file` or `edit_file` approval prompt, MahanAI shows a colored unified diff of the changes the model wants to make:
 
 ```
   Write File
@@ -868,6 +956,65 @@ When the model requests multiple tools at once (e.g. from Codex WHAM), MahanAI s
 ```
 
 After approval, all tools run concurrently (up to 8 in parallel) and results are returned together.
+
+---
+
+## Autonomous Mode
+
+`/auto on` skips all approval prompts so the model can work through multi-step tasks without interruption. Destructive commands (`rm -rf`, `format`, `shutdown`, etc.) are still flagged and require manual approval even in autonomous mode.
+
+```
+/auto on     # auto-approve all tool calls
+/auto off    # restore normal prompts
+```
+
+When a tool is auto-approved, the terminal prints `[AUTO] <command>` instead of the full approval UI. Autonomous mode resets to off when MahanAI exits.
+
+---
+
+## Vim Keybindings
+
+`/vim on` switches the prompt to readline vi mode. Press `Esc` to enter normal mode (hjkl navigation, `/` search, `dw` delete word, etc.) and `i` to return to insert mode.
+
+```
+/vim on    # enable vi keybindings
+/vim off   # revert to default emacs keybindings
+```
+
+Requires the `readline` module (available by default on Linux and macOS; Windows uses a stub).
+
+---
+
+## Desktop Notifications
+
+MahanAI automatically sends a desktop notification when a response takes **10 seconds or longer** to complete — useful when you step away from the terminal during a long generation.
+
+| Platform | Mechanism |
+|---|---|
+| Linux | `notify-send` |
+| macOS | `osascript` |
+| Windows | PowerShell |
+
+You can also trigger a test notification manually:
+
+```
+/notify                  # sends "Test notification from MahanAI."
+/notify My Custom Title  # sends with a custom title
+```
+
+---
+
+## Shell History Awareness
+
+`/shell-history` reads from `~/.bash_history` or `~/.zsh_history` (whichever exists) and shows the last 20 commands.
+
+```
+/shell-history          # print recent history to screen
+/shell-history inject   # add last 20 commands to the AI's context
+/shell-history clear    # remove injected history from context
+```
+
+When injected, the history appears in the system prompt as a `--- Recent Shell History ---` block, giving the model awareness of what you've been running without you having to paste it manually.
 
 ---
 

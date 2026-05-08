@@ -86,8 +86,9 @@ from mahanai.config import (
     load_context_limit,
 )
 from mahanai.mmd_parser import MmdPlugin, parse_mmd_file
+from mahanai.rc_parser import parse_rc_file
 from mahanai.system_info import describe_runtime
-from mahanai.tools import TOOLS, batch_approve_and_execute, execute_tool, normalize_tool_arguments_json
+from mahanai.tools import TOOLS, batch_approve_and_execute, execute_tool, normalize_tool_arguments_json, set_autonomous_mode, is_autonomous_mode
 
 # ── Plugin registry ───────────────────────────────────────────────────────────
 _LOADED_PLUGINS: dict[str, MmdPlugin] = {}  # name → MmdPlugin
@@ -102,6 +103,60 @@ def _inject_saved_plugins() -> None:
             _LOADED_PLUGINS[plugin.name] = plugin
         except Exception:
             remove_plugin(name)
+
+
+# ── Desktop notifications ─────────────────────────────────────────────────────
+
+def _send_notification(title: str, body: str) -> None:
+    """Send a desktop notification. Best-effort, never raises."""
+    try:
+        if sys.platform.startswith("linux"):
+            subprocess.run(
+                ["notify-send", "--urgency=normal", title, body],
+                capture_output=True, timeout=3,
+            )
+        elif sys.platform == "darwin":
+            script = f'display notification "{body}" with title "{title}"'
+            subprocess.run(["osascript", "-e", script], capture_output=True, timeout=3)
+        elif sys.platform == "win32":
+            ps = (
+                f"Add-Type -AssemblyName System.Windows.Forms; "
+                f"[System.Windows.Forms.ToolTip]::new(); "
+                f"[System.Windows.Forms.MessageBox]::Show('{body}', '{title}')"
+            )
+            subprocess.run(
+                ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
+                capture_output=True, timeout=5,
+            )
+    except Exception:
+        pass
+
+
+# ── Shell history ─────────────────────────────────────────────────────────────
+
+def _get_shell_history(n: int = 20) -> list[str]:
+    """Return the last n shell commands from bash/zsh history."""
+    candidates = [
+        Path.home() / ".bash_history",
+        Path.home() / ".zsh_history",
+    ]
+    hist_env = os.environ.get("HISTFILE", "")
+    if hist_env:
+        candidates.insert(0, Path(hist_env))
+    for hist_path in candidates:
+        if hist_path.is_file():
+            try:
+                lines = hist_path.read_text(errors="replace").splitlines()
+                # zsh extended history lines start with ": <timestamp>:0;"
+                cmds = [
+                    re.sub(r'^:\s*\d+:\d+;\s*', '', l)
+                    for l in lines
+                    if l and not l.startswith("#")
+                ]
+                return [c for c in cmds[-n:] if c.strip()]
+            except Exception:
+                continue
+    return []
 
 
 # ── Auto-update check ─────────────────────────────────────────────────────────
@@ -434,6 +489,11 @@ _ALL_COMMANDS: list[tuple[str, str]] = [
     ("/repl",             "Open an interactive Python REPL"),
     ("/audit",            "View tool execution audit log"),
     ("/voice",            "Toggle voice input: on|off"),
+    ("/auto",             "Toggle autonomous mode (skip approval prompts): on|off"),
+    ("/vim",              "Toggle vim keybindings for the prompt: on|off"),
+    ("/notify",           "Send a test desktop notification"),
+    ("/shell-history",    "Show recent shell history; inject to add to context"),
+    ("/mahanairc",        "Reload .mahanairc project config from current directory"),
     ("/shell-init",       "Print shell alias script for bash/fish"),
     ("/themes",           "Switch theme: midnight, light, midnight-cb, light-cb"),
     ("/theme-load",       "Load a custom .mai theme file"),
@@ -468,6 +528,16 @@ def _setup_tab_completion() -> None:
         readline.set_completer_delims(" \t\n")
     except ImportError:
         pass
+
+
+def _set_vim_mode(enabled: bool) -> bool:
+    """Enable or disable readline vi editing mode. Returns True on success."""
+    try:
+        import readline
+        readline.parse_and_bind("set editing-mode vi" if enabled else "set editing-mode emacs")
+        return True
+    except Exception:
+        return False
 
 
 def _run_onboarding_wizard() -> None:
@@ -1204,7 +1274,12 @@ def _show_fileslist(workspace: Path) -> None:
     print()
 
 
-def build_system_prompt(workspace: Path, memories: list[str] | None = None) -> str:
+def build_system_prompt(
+    workspace: Path,
+    memories: list[str] | None = None,
+    rc_extras: list[str] | None = None,
+    shell_history: list[str] | None = None,
+) -> str:
     env_line = describe_runtime()
     comspec = os.environ.get("ComSpec", "cmd.exe")
     base = (
@@ -1220,8 +1295,10 @@ def build_system_prompt(workspace: Path, memories: list[str] | None = None) -> s
         "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force -Path 'dir\\\\sub'\". "
         "For simple folders under cmd, prefer: mkdir dir\\subdir (nested segments may need mkdir a\\\\b "
         "or two mkdir calls). "
-        "Use read_file, write_file, list_directory, append_file, fetch_url, python_repl, web_search "
+        "Use read_file, write_file, edit_file, list_directory, append_file, fetch_url, python_repl, web_search "
         "when they fit the task. "
+        "For targeted file edits (changing a specific function or block) prefer edit_file over write_file — "
+        "it takes old_string and new_string and applies a surgical replacement with a diff preview. "
         "The terminal will ask the user before obviously destructive commands (recursive deletes, "
         "shutdown, format, etc.). "
         "Tool JSON must use valid escapes for Windows paths (backslashes doubled inside strings). "
@@ -1237,9 +1314,17 @@ def build_system_prompt(workspace: Path, memories: list[str] | None = None) -> s
                 base += f"\n\n--- Project Context (MAHANAI.md) ---\n{content}\n---"
         except Exception:
             pass
+    if rc_extras:
+        base += "\n\n--- Project Config (.mahanairc) ---\n"
+        base += "\n".join(rc_extras)
+        base += "\n---"
     if memories:
         base += "\n\n--- Persistent Memory ---\n"
         base += "\n".join(f"- {m}" for m in memories)
+        base += "\n---"
+    if shell_history:
+        base += "\n\n--- Recent Shell History ---\n"
+        base += "\n".join(f"$ {cmd}" for cmd in shell_history)
         base += "\n---"
     return base
 
@@ -1496,6 +1581,13 @@ def _print_help() -> None:
         f"  /audit                      View the last 50 tool-execution audit log entries\n"
         f"\n"
         f"  /voice on|off               Toggle voice input (requires SpeechRecognition)\n"
+        f"  /auto on|off                Autonomous mode — skip approval prompts (destructive cmds still ask)\n"
+        f"  /vim on|off                 Vim keybindings for the prompt (Esc → normal, i → insert)\n"
+        f"  /notify [title]             Send a test desktop notification\n"
+        f"  /shell-history              Show recent shell history\n"
+        f"  /shell-history inject       Add recent shell history to AI context\n"
+        f"  /shell-history clear        Remove shell history from context\n"
+        f"  /mahanairc                  Reload .mahanairc project config from current directory\n"
         f"  /shell-init [bash|fish]     Print the 'ai' shortcut shell script\n"
         f"\n"
         f"  /themes                     List available themes\n"
@@ -1605,10 +1697,21 @@ def main() -> None:
         OpenAI(base_url=NVIDIA_BASE_URL, api_key=api_key) if api_key else None
     )
 
+    # ── .mahanairc loading ────────────────────────────────────────────────────
+    _rc_config = None
+    _rc_extras: list[str] = []
+    _rc_path = workspace / ".mahanairc"
+    if _rc_path.is_file():
+        try:
+            _rc_config = parse_rc_file(_rc_path)
+            _rc_extras = _rc_config.system_extras[:]
+        except Exception as _rc_err:
+            print(f"{C.WARN}.mahanairc parse error: {_rc_err}{C.RST}\n")
+
     # ── New feature state ─────────────────────────────────────────────────────
     _memories: dict[str, dict] = load_memories()
     _mem_texts = [m["content"] for m in _memories.values()]
-    system_prompt = build_system_prompt(workspace, _mem_texts)
+    system_prompt = build_system_prompt(workspace, _mem_texts, rc_extras=_rc_extras)
 
     history: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
 
@@ -1622,9 +1725,13 @@ def main() -> None:
     show_timestamps: bool = False
     highlight_enabled: bool = False
     voice_enabled: bool = False
+    vim_mode: bool = False
+    shell_history_inject: bool = False
     last_user_input: str | None = None
     last_ai_reply: str | None = None
     _session_id: str = _new_session_id()
+    _last_response_time: float = 0.0
+    _notify_threshold: float = 10.0  # seconds — notify when response takes longer than this
 
     # Cost tracker
     show_cost: bool = load_cost_setting()
@@ -1690,6 +1797,46 @@ def main() -> None:
 
     if (workspace / "MAHANAI.md").is_file():
         print(f"{C.OK}🤖 MAHANAI.md{C.RST} {C.DIM}loaded as project context for all providers.{C.RST}\n")
+
+    if _rc_config is not None:
+        _rc_note_parts = []
+        if _rc_config.context_files:
+            _rc_note_parts.append(f"{len(_rc_config.context_files)} context file(s)")
+        if _rc_config.mmd_plugins:
+            _rc_note_parts.append(f"{len(_rc_config.mmd_plugins)} plugin(s)")
+        if _rc_config.system_extras:
+            _rc_note_parts.append(f"{len(_rc_config.system_extras)} package extra(s)")
+        _rc_note = ", ".join(_rc_note_parts) if _rc_note_parts else "loaded"
+        print(f"{C.OK}📋 .mahanairc{C.RST} {C.DIM}{_rc_note}{C.RST}\n")
+        for _rc_warn in _rc_config.warnings:
+            print(f"{C.WARN}  .mahanairc: {_rc_warn}{C.RST}")
+        # Auto-load .mmd plugins declared in .mahanairc
+        for _rc_mmd_path in _rc_config.mmd_plugins:
+            _rc_mmd_p = Path(_rc_mmd_path)
+            if _rc_mmd_p.is_file():
+                try:
+                    _rc_plugin = parse_mmd_file(_rc_mmd_p)
+                    _LOADED_PLUGINS[_rc_plugin.name] = _rc_plugin
+                    print(f"{C.DIM}  .mahanairc: loaded plugin '{_rc_plugin.name}'{C.RST}")
+                except Exception as _rc_pe:
+                    print(f"{C.WARN}  .mahanairc: could not load plugin {_rc_mmd_path!r}: {_rc_pe}{C.RST}")
+            else:
+                print(f"{C.WARN}  .mahanairc: plugin file not found: {_rc_mmd_path!r}{C.RST}")
+        # Inject context files into system prompt
+        for _rc_ctx_path in _rc_config.context_files:
+            _rc_ctx_p = Path(_rc_ctx_path)
+            if _rc_ctx_p.is_file():
+                try:
+                    _rc_ctx_text = _rc_ctx_p.read_text(encoding="utf-8", errors="replace").strip()
+                    if _rc_ctx_text:
+                        history[0]["content"] += (
+                            f"\n\n--- Context ({_rc_ctx_p.name}) ---\n{_rc_ctx_text}\n---"
+                        )
+                        print(f"{C.DIM}  .mahanairc: injected context '{_rc_ctx_p.name}'{C.RST}")
+                except Exception as _rc_ce:
+                    print(f"{C.WARN}  .mahanairc: could not read context {_rc_ctx_path!r}: {_rc_ce}{C.RST}")
+            else:
+                print(f"{C.WARN}  .mahanairc: context file not found: {_rc_ctx_path!r}{C.RST}")
 
     model = os.environ.get("MAHANAI_MODEL", DEFAULT_MODEL)
 
@@ -3032,6 +3179,98 @@ def main() -> None:
                     print(f"{C.ERR}Unknown shell {_shell!r}.{C.RST} Supported: {C.DIM}bash{C.RST}, {C.DIM}zsh{C.RST}, {C.DIM}fish{C.RST}.\n")
                 continue
 
+            # ── Autonomous mode ───────────────────────────────────────────────
+            elif cmd == "/auto":
+                _auto_sub = rest.strip().lower()
+                if _auto_sub in ("on", "1", "true"):
+                    set_autonomous_mode(True)
+                    print(
+                        f"{C.WARN}Autonomous mode ON.{C.RST} "
+                        f"{C.DIM}Tool calls will be auto-approved (destructive commands still require approval).{C.RST}\n"
+                    )
+                elif _auto_sub in ("off", "0", "false", ""):
+                    set_autonomous_mode(False)
+                    print(f"{C.OK}Autonomous mode OFF.{C.RST} {C.DIM}Normal approval prompts restored.{C.RST}\n")
+                else:
+                    _auto_state = "ON" if is_autonomous_mode() else "OFF"
+                    print(f"{C.DIM}Autonomous mode is {_auto_state}. Use /auto on|off to toggle.{C.RST}\n")
+                continue
+
+            # ── Vim keybindings ───────────────────────────────────────────────
+            elif cmd == "/vim":
+                _vim_sub = rest.strip().lower()
+                if _vim_sub in ("on", "1", "true"):
+                    if _set_vim_mode(True):
+                        vim_mode = True
+                        print(f"{C.OK}Vim keybindings ON.{C.RST} {C.DIM}(Esc → normal mode, i → insert){C.RST}\n")
+                    else:
+                        print(f"{C.ERR}readline not available — vim mode not supported on this platform.{C.RST}\n")
+                elif _vim_sub in ("off", "0", "false", ""):
+                    _set_vim_mode(False)
+                    vim_mode = False
+                    print(f"{C.OK}Vim keybindings OFF.{C.RST} {C.DIM}(back to emacs/default mode){C.RST}\n")
+                else:
+                    _vim_state = "ON" if vim_mode else "OFF"
+                    print(f"{C.DIM}Vim mode is {_vim_state}. Use /vim on|off to toggle.{C.RST}\n")
+                continue
+
+            # ── Desktop notification ──────────────────────────────────────────
+            elif cmd == "/notify":
+                _ntitle = rest.strip() or "MahanAI"
+                _send_notification(_ntitle, "Test notification from MahanAI.")
+                print(f"{C.OK}Notification sent.{C.RST} {C.DIM}({_ntitle}){C.RST}\n")
+                continue
+
+            # ── Shell history ─────────────────────────────────────────────────
+            elif cmd == "/shell-history":
+                _sh_sub = rest.strip().lower()
+                if _sh_sub == "inject":
+                    _sh_cmds = _get_shell_history(20)
+                    if not _sh_cmds:
+                        print(f"{C.WARN}No shell history found.{C.RST}\n")
+                    else:
+                        _sh_block = "\n".join(f"$ {c}" for c in _sh_cmds)
+                        history[0]["content"] += f"\n\n--- Recent Shell History ---\n{_sh_block}\n---"
+                        shell_history_inject = True
+                        print(f"{C.OK}Shell history injected into context.{C.RST} {C.DIM}({len(_sh_cmds)} commands){C.RST}\n")
+                elif _sh_sub == "clear":
+                    shell_history_inject = False
+                    # Rebuild system prompt without shell history
+                    system_prompt = build_system_prompt(workspace, _mem_texts, rc_extras=_rc_extras)
+                    history[0]["content"] = system_prompt
+                    print(f"{C.OK}Shell history removed from context.{C.RST}\n")
+                else:
+                    _sh_cmds = _get_shell_history(20)
+                    if not _sh_cmds:
+                        print(f"{C.WARN}No shell history found (~/.bash_history or ~/.zsh_history).{C.RST}\n")
+                    else:
+                        print(f"{C.DIM}Recent shell history:{C.RST}")
+                        for _sh_i, _sh_c in enumerate(_sh_cmds, 1):
+                            print(f"  {C.DIM}{_sh_i:2}.{C.RST} {_sh_c}")
+                        print(f"\n{C.DIM}Use /shell-history inject to add to context, /shell-history clear to remove.{C.RST}\n")
+                continue
+
+            # ── .mahanairc reload ─────────────────────────────────────────────
+            elif cmd == "/mahanairc":
+                _rc_reload_path = workspace / ".mahanairc"
+                if not _rc_reload_path.is_file():
+                    print(f"{C.ERR}No .mahanairc found in {workspace}{C.RST}\n")
+                else:
+                    try:
+                        _rc_config = parse_rc_file(_rc_reload_path)
+                        _rc_extras = _rc_config.system_extras[:]
+                        # Rebuild system prompt with new extras
+                        system_prompt = build_system_prompt(workspace, _mem_texts, rc_extras=_rc_extras)
+                        history[0]["content"] = system_prompt
+                        print(f"{C.OK}.mahanairc reloaded.{C.RST}")
+                        if _rc_config.warnings:
+                            for _w in _rc_config.warnings:
+                                print(f"{C.WARN}  {_w}{C.RST}")
+                        print()
+                    except Exception as _rc_rel_err:
+                        print(f"{C.ERR}.mahanairc reload failed: {_rc_rel_err}{C.RST}\n")
+                continue
+
             if not _route_after_cmd:
                 print(f"{C.ERR}Unknown command.{C.RST} Try {C.DIM}/help{C.RST}\n")
                 continue
@@ -3090,7 +3329,7 @@ def main() -> None:
         effort_instr = "" if is_haiku else _EFFORT_INSTRUCTIONS.get(current_effort, "")
         codex_effort = _EFFORT_CODEX.get(current_effort, "medium")
 
-        def _post_reply(reply: str, input_text: str = "") -> None:
+        def _post_reply(reply: str, input_text: str = "", elapsed: float = 0.0) -> None:
             """Run after each successful AI reply: highlight, token count, cost, auto-save."""
             nonlocal last_ai_reply, _session_input_tokens, _session_output_tokens, _session_cost_usd
             last_ai_reply = reply
@@ -3111,6 +3350,12 @@ def main() -> None:
                 print(f"{C.DIM}~{_out_tok} tokens{C.RST}\n")
             if show_cost and _pricing:
                 print(f"{C.DIM}~${_turn_cost:.4f} this turn  (session: ${_session_cost_usd:.4f}){C.RST}\n")
+            # Desktop notification for long responses
+            if elapsed >= _notify_threshold:
+                _send_notification(
+                    "MahanAI",
+                    f"Response ready ({elapsed:.0f}s) — {selected['label']}",
+                )
             # Context window trim
             trimmed = _trim_context_if_needed(history, _context_limit)
             if trimmed:
@@ -3118,6 +3363,7 @@ def main() -> None:
             _auto_save_session(_session_id, history, selected["label"])
 
         # Route based on selected model
+        _reply_t0 = time.time()
         if selected["mode"] == "claude":
             claude_model = selected.get("claude_model")
             print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
@@ -3125,7 +3371,7 @@ def main() -> None:
             print("\n")
             history.append({"role": "user", "content": effective_user})
             history.append({"role": "assistant", "content": _claude_reply})
-            _post_reply(_claude_reply, effective_user)
+            _post_reply(_claude_reply, effective_user, elapsed=time.time() - _reply_t0)
             continue
 
         def _user_content(text: str) -> Any:
@@ -3155,7 +3401,7 @@ def main() -> None:
                 continue
             print("\n")
             history.append({"role": "assistant", "content": reply})
-            _post_reply(reply, effective_user)
+            _post_reply(reply, effective_user, elapsed=time.time() - _reply_t0)
             continue
 
         if selected["mode"] == "codex_indirect":
@@ -3172,7 +3418,7 @@ def main() -> None:
                     continue
                 print("\n")
                 history.append({"role": "assistant", "content": reply})
-                _post_reply(reply, effective_user)
+                _post_reply(reply, effective_user, elapsed=time.time() - _reply_t0)
             else:
                 print(f"\n{C.BOT}{C.AI_NAME}{C.RST}: ", end="", flush=True)
                 _run_codex_cli(effective_user, model=selected["name"])
@@ -3198,7 +3444,7 @@ def main() -> None:
                 continue
             print("\n")
             history.append({"role": "assistant", "content": reply})
-            _post_reply(reply, effective_user)
+            _post_reply(reply, effective_user, elapsed=time.time() - _reply_t0)
             continue
 
         if selected["mode"] == "custom":
@@ -3226,7 +3472,7 @@ def main() -> None:
                 continue
             print("\n")
             history.append({"role": "assistant", "content": reply})
-            _post_reply(reply, effective_user)
+            _post_reply(reply, effective_user, elapsed=time.time() - _reply_t0)
             continue
 
         if selected["mode"] == "nvidia_direct":
@@ -3264,4 +3510,4 @@ def main() -> None:
             continue
         print("\n")
         history.append({"role": "assistant", "content": reply})
-        _post_reply(reply, effective_user)
+        _post_reply(reply, effective_user, elapsed=time.time() - _reply_t0)

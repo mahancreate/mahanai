@@ -1,0 +1,15 @@
+# import default mahanairc
+import defaults from mahanairc
+# import the common sense corrector package
+import csc from dev-pack
+
+# use the default one
+defaults(def)
+
+# continue it by loading these
+load(location="$HOME/Desktop/MahanAI/MAHANAI.md" type=context)
+load(location="$HOME/Desktop/MahanAI/example-mahanai-mahmod.mmd" type=mmd)
+load(mahanai, python-dev-kit, mahanairc, csc, crt, default)
+
+# end
+start(mahanai)
