@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MahanAI — Documentation</title>
+<link rel="icon" href="assets/mahan-mark.png">
+<link rel="stylesheet" href="colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  /* ── Base ─────────────────────────────────────────────── */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background:
+      radial-gradient(ellipse 900px 600px at 20% 0%, rgba(37,99,235,.18), transparent 55%),
+      radial-gradient(ellipse 700px 500px at 85% 10%, rgba(124,58,237,.12), transparent 60%),
+      #07080C;
+    color: var(--fg-1);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  ::selection { background: color-mix(in oklab, var(--brand-blue-bright) 55%, transparent); }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+
+  /* ── Nav ──────────────────────────────────────────────── */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    background: rgba(11,13,19,0.55);
+    border-bottom: 1px solid var(--border-1);
+  }
+  .nav-inner {
+    display: flex; align-items: center; gap: 24px;
+    height: 60px;
+  }
+  .nav-logo { display:flex; align-items:center; gap: 10px; }
+  .nav-logo img { height: 26px; width: auto; display:block; }
+  .nav-logo b { font-weight: 600; letter-spacing: -0.01em; font-size: 16px; }
+  .nav-links { display: flex; gap: 22px; margin-left: 12px; }
+  .nav-links a {
+    font-size: 14px; color: var(--fg-2);
+    transition: color var(--dur-fast) var(--ease-std);
+  }
+  .nav-links a:hover { color: var(--fg-1); }
+  .nav-links a.active { color: var(--brand-blue-bright); font-weight: 600; }
+  .nav-spacer { flex: 1; }
+  .nav-cta {
+    font-family: var(--font-mono); font-size: 12.5px;
+    color: var(--fg-2);
+    padding: 7px 12px; border: 1px solid var(--border-2);
+    border-radius: 6px;
+    transition: all var(--dur-fast) var(--ease-std);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .nav-cta:hover { color: var(--fg-1); background: var(--bg-3); }
+
+  /* ── Doc layout ────────────────────────────────────────── */
+  .doc-container {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 48px;
+    padding: 64px 0;
+    align-items: start;
+  }
+  .doc-sidebar {
+    position: sticky; top: 120px;
+    display: flex; flex-direction: column; gap: 24px;
+  }
+  .doc-section-nav {
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .doc-section-nav h4 {
+    margin: 0 0 12px;
+    font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--fg-3); font-weight: 500;
+  }
+  .doc-section-nav a {
+    font-size: 14px; color: var(--fg-2);
+    padding: 6px 8px;
+    border-radius: 6px;
+    transition: all var(--dur-fast) var(--ease-std);
+  }
+  .doc-section-nav a:hover { background: var(--bg-2); color: var(--fg-1); }
+  .doc-section-nav a.active {
+    background: rgba(37,99,235,.15);
+    color: var(--brand-blue-bright);
+    font-weight: 500;
+  }
+
+  .doc-content {
+    display: flex; flex-direction: column; gap: 48px;
+  }
+  .doc-section {
+    display: none;
+  }
+  .doc-section.active {
+    display: block;
+  }
+
+  .doc-h1 {
+    font-family: var(--font-display);
+    font-size: clamp(32px, 5vw, 48px);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin: 0 0 20px;
+    text-wrap: balance;
+  }
+  .doc-lead {
+    max-width: 720px;
+    font-size: 16px; line-height: 1.6;
+    color: var(--fg-2);
+    margin: 0 0 40px;
+    text-wrap: pretty;
+  }
+
+  .doc-h2 {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin: 32px 0 16px;
+    text-wrap: balance;
+  }
+  .doc-h3 {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 24px 0 12px;
+  }
+  .doc-h4 {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    margin: 20px 0 10px;
+    color: var(--fg-2);
+  }
+
+  .doc-p {
+    font-size: 15px; line-height: 1.7;
+    color: var(--fg-2);
+    margin: 0 0 16px;
+    text-wrap: pretty;
+  }
+  .doc-p code {
+    font-family: var(--font-mono);
+    color: var(--fg-1);
+    background: var(--bg-3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-1);
+    font-size: 13.5px;
+  }
+
+  .doc-ul, .doc-ol {
+    font-size: 15px; line-height: 1.7;
+    color: var(--fg-2);
+    margin: 0 0 20px 0;
+    padding-left: 28px;
+  }
+  .doc-ul li, .doc-ol li {
+    margin-bottom: 8px;
+  }
+  .doc-ul li code, .doc-ol li code {
+    font-family: var(--font-mono);
+    color: var(--fg-1);
+    background: var(--bg-3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-1);
+    font-size: 13.5px;
+  }
+
+  .code-block {
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: 8px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--fg-1);
+    margin: 20px 0;
+  }
+  .code-block code {
+    color: inherit;
+    background: none;
+    padding: 0;
+    border: none;
+  }
+
+  .cmd-ref {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 20px;
+    padding: 16px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: 8px;
+    margin: 16px 0;
+    align-items: start;
+  }
+  .cmd-ref .cmd {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--sem-user);
+    font-size: 14px;
+  }
+  .cmd-ref .desc {
+    font-size: 14px;
+    color: var(--fg-2);
+  }
+  .cmd-ref .desc code {
+    font-family: var(--font-mono);
+    color: var(--fg-1);
+    background: rgba(37,99,235,.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+    margin: 20px 0;
+  }
+  .doc-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .doc-table th {
+    background: var(--bg-3);
+    border-bottom: 1px solid var(--border-1);
+    padding: 12px 14px;
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    font-weight: 600;
+  }
+  .doc-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-1);
+    font-size: 14px;
+    color: var(--fg-2);
+  }
+  .doc-table td code {
+    font-family: var(--font-mono);
+    color: var(--fg-1);
+    background: rgba(37,99,235,.05);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 13px;
+  }
+  .doc-table tr:hover { background: rgba(37,99,235,.05); }
+
+  .note {
+    background: rgba(37,99,235,.08);
+    border-left: 3px solid var(--brand-blue-bright);
+    padding: 12px 14px;
+    border-radius: 0 6px 6px 0;
+    margin: 20px 0;
+    font-size: 14px;
+    color: var(--fg-2);
+  }
+  .note code {
+    font-family: var(--font-mono);
+    color: var(--fg-1);
+    background: rgba(37,99,235,.15);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-size: 12.5px;
+  }
+
+  /* ── Footer ───────────────────────────────────────────── */
+  .footer {
+    border-top: 1px solid var(--border-1);
+    padding: 40px 0 48px;
+    margin-top: 96px;
+  }
+  .footer-inner {
+    display: flex; align-items: center; gap: 24px;
+    flex-wrap: wrap;
+  }
+  .footer-logo { display: flex; align-items: center; gap: 10px; color: var(--fg-2); font-size: 14px; }
+  .footer-logo img { height: 22px; }
+  .footer-logo b { color: var(--fg-1); font-weight: 600; }
+  .footer-meta { color: var(--fg-3); font-size: 13px; font-family: var(--font-mono); }
+  .footer-spacer { flex: 1; }
+  .footer-links { display: flex; gap: 20px; }
+  .footer-links a {
+    font-size: 13px; color: var(--fg-3);
+    transition: color var(--dur-fast) var(--ease-std);
+  }
+  .footer-links a:hover { color: var(--fg-1); }
+
+  /* ── Responsive ───────────────────────────────────────── */
+  @media (max-width: 900px) {
+    .doc-container {
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+    .doc-sidebar {
+      position: static;
+      flex-direction: row;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .doc-section-nav {
+      flex-direction: row;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .cmd-ref {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── NAV ────────────────────────────────────────────── -->
+<nav class="nav">
+  <div class="wrap nav-inner">
+    <a class="nav-logo" href="index.html">
+      <img src="assets/mahan-mark.png" alt="MahanAI">
+      <b>MahanAI</b>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="docs.html" class="active">Docs</a>
+      <a href="https://github.com/maifoundation/mahanai" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://pypi.org/project/mahanai/" target="_blank" rel="noopener">PyPI</a>
+    </div>
+    <div class="nav-spacer"></div>
+    <a class="nav-cta" href="https://github.com/maifoundation/mahanai" target="_blank" rel="noopener">
+      <span>⭐ Star</span>
+    </a>
+  </div>
+</nav>
+
+<!-- ── MAIN ───────────────────────────────────────────── -->
+<div class="wrap">
+  <div class="doc-container">
+
+    <!-- ── SIDEBAR ────────────────────────────────────── -->
+    <aside class="doc-sidebar">
+      <div class="doc-section-nav">
+        <h4>Getting Started</h4>
+        <a class="nav-link active" data-section="quickstart">Quick Start</a>
+        <a class="nav-link" data-section="install">Installation</a>
+        <a class="nav-link" data-section="models">Models & Providers</a>
+      </div>
+      <div class="doc-section-nav">
+        <h4>Usage</h4>
+        <a class="nav-link" data-section="commands">Commands Reference</a>
+        <a class="nav-link" data-section="config">Configuration</a>
+        <a class="nav-link" data-section="gateway">Gateway Server</a>
+      </div>
+      <div class="doc-section-nav">
+        <h4>Advanced</h4>
+        <a class="nav-link" data-section="plugins">Plugin Development</a>
+        <a class="nav-link" data-section="themes">Theme Development</a>
+        <a class="nav-link" data-section="api">API & Environment</a>
+      </div>
+    </aside>
+
+    <!-- ── CONTENT ─────────────────────────────────────── -->
+    <main class="doc-content">
+
+      <!-- Quick Start -->
+      <section class="doc-section active" id="quickstart">
+        <h1 class="doc-h1">Quick Start</h1>
+        <p class="doc-lead">Get MahanAI running in 10 seconds. Install with pip, run the command, and follow the onboarding wizard.</p>
+
+        <h2 class="doc-h2">Installation & Launch</h2>
+        <div class="code-block"><code>$ pip install mahanai
+$ mahanai</code></div>
+        <p class="doc-p">That's it. An onboarding wizard will guide you through:</p>
+        <ul class="doc-ul">
+          <li>Picking a default model (Claude Haiku 4.5, Claude Sonnet 4.6, Codex, NVIDIA NIM, or Ollama)</li>
+          <li>Setting up API keys (securely saved to <code>~/.config/mahanai/config.json</code>)</li>
+          <li>Choosing a theme (midnight, light, or colorblind-friendly)</li>
+        </ul>
+
+        <h2 class="doc-h2">Your First Chat</h2>
+        <p class="doc-p">Once launched, you'll see a full-width chat loop with:</p>
+        <ul class="doc-ul">
+          <li>A gradient ASCII banner (tweens while you wait)</li>
+          <li>A status line showing your model, effort level, and theme</li>
+          <li>An approval-first tool runtime (all operations ask before executing)</li>
+        </ul>
+
+        <p class="doc-p">Type your prompt and watch responses stream live. Press <code>[A]</code> to approve tool calls, <code>[W]</code> to always-allow, or <code>[D]</code> to deny.</p>
+
+        <h2 class="doc-h2">Key Commands</h2>
+        <div class="cmd-ref">
+          <div class="cmd">/models</div>
+          <div class="desc">Switch models interactively with arrow keys and Enter.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/effort high</div>
+          <div class="desc">Set reasoning depth: <code>low</code>, <code>medium</code>, <code>high</code>, or <code>very-high</code>.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/plan on</div>
+          <div class="desc">Outline approach before every response.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/cost</div>
+          <div class="desc">See session token usage and estimated spend.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/help</div>
+          <div class="desc">List all 60+ commands.</div>
+        </div>
+
+        <div class="note">
+          <strong>Tip:</strong> Use <code>/cmd</code> to fuzzy-search all commands, or save frequently-used combinations in <code>/themrcfile~/project/.mahanairc</code> config files for project-specific setups.
+        </div>
+      </section>
+
+      <!-- Installation -->
+      <section class="doc-section" id="install">
+        <h1 class="doc-h1">Installation</h1>
+        <p class="doc-lead">MahanAI is available on PyPI for Python 3.8+. Install once, launch anytime.</p>
+
+        <h2 class="doc-h2">Via pip</h2>
+        <div class="code-block"><code>$ pip install mahanai</code></div>
+
+        <h2 class="doc-h2">Upgrade</h2>
+        <div class="code-block"><code>$ pip install --upgrade mahanai</code></div>
+
+        <h2 class="doc-h2">Uninstall</h2>
+        <div class="code-block"><code>$ pip uninstall mahanai</code></div>
+
+        <h2 class="doc-h2">Onboarding</h2>
+        <p class="doc-p">First launch runs a guided wizard that collects:</p>
+        <ul class="doc-ul">
+          <li><strong>Default model:</strong> Claude Haiku 4.5 is recommended for speed and cost.</li>
+          <li><strong>API keys:</strong> Stored securely in <code>~/.config/mahanai/config.json</code> (or <code>%APPDATA%\MahanAI\</code> on Windows). Never transmitted.</li>
+          <li><strong>Theme:</strong> Four built-in themes, plus support for custom <code>.mai</code> files.</li>
+        </ul>
+
+        <h2 class="doc-h2">Configuration Directory</h2>
+        <ul class="doc-ul">
+          <li><strong>Linux/macOS:</strong> <code>~/.config/mahanai/config.json</code></li>
+          <li><strong>Windows:</strong> <code>%APPDATA%\MahanAI\config.json</code></li>
+        </ul>
+
+        <p class="doc-p">Override with <code>MAHANAI_CONFIG_DIR</code> environment variable.</p>
+
+
+      </section>
+
+      <!-- Models & Providers -->
+      <section class="doc-section" id="models">
+        <h1 class="doc-h1">Models & Providers</h1>
+        <p class="doc-lead">Switch between Claude, Codex, NVIDIA NIM, Ollama, and any OpenAI-compatible endpoint.</p>
+
+        <h2 class="doc-h2">Built-in Providers</h2>
+
+        <h3 class="doc-h3">Claude (Anthropic)</h3>
+        <p class="doc-p">Via <a href="https://claude.ai/code" target="_blank">Claude Code</a> — sign in once, use all Claude models.</p>
+        <ul class="doc-ul">
+          <li><strong>Claude Haiku 4.5</strong> (default) — fast, cheap, great for coding</li>
+          <li><strong>Claude Sonnet 4.6</strong> — balanced performance & reasoning</li>
+          <li><strong>Claude Opus</strong> — powerful for complex reasoning</li>
+        </ul>
+        <div class="code-block"><code>$ /mode claude        # switch to Sonnet 4.6
+$ /mode default      # switch back to Haiku 4.5</code></div>
+
+        <h3 class="doc-h3">OpenAI Codex</h3>
+        <p class="doc-p">Browser-based OAuth login, no API key needed.</p>
+        <div class="code-block"><code>$ /codex-login       # opens browser
+$ /mode codex        # switch to Codex model</code></div>
+
+        <h3 class="doc-h3">NVIDIA NIM</h3>
+        <p class="doc-p">Llama 3.3 70B via NVIDIA's inference endpoint.</p>
+        <div class="code-block"><code>$ /api-key-nvidia your-api-key
+$ /mode nvidia       # switch to Llama 3.3 70B</code></div>
+
+        <h3 class="doc-h3">Ollama</h3>
+        <p class="doc-p">Run models locally. <a href="https://ollama.ai" target="_blank">Install Ollama</a> first, start a model, then add it to MahanAI:</p>
+        <div class="code-block"><code>$ ollama run llama2
+$ /add-ollama llama2 localhost 11434</code></div>
+
+        <h3 class="doc-h3">Any OpenAI-compatible API</h3>
+        <p class="doc-p">Point at LM Studio, vLLM, OpenRouter, or any /v1-compatible server:</p>
+        <div class="code-block"><code>$ /custom http://localhost:8000 my-model my-api-key
+$ /mode my-model     # switch to it</code></div>
+
+        <h2 class="doc-h2">Switch Models</h2>
+        <div class="cmd-ref">
+          <div class="cmd">/models</div>
+          <div class="desc">Interactive picker with arrow keys and Enter.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/mode &lt;name&gt;</div>
+          <div class="desc">Quick-switch: <code>/mode claude</code>, <code>/mode ollama</code>, etc.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">MAHANAI_MODEL=claude</div>
+          <div class="desc">Set default model via environment variable.</div>
+        </div>
+      </section>
+
+      <!-- Commands Reference -->
+      <section class="doc-section" id="commands">
+        <h1 class="doc-h1">Commands Reference</h1>
+        <p class="doc-lead">60+ slash-prefixed commands for every scenario. Fuzzy-search them all with <code>/cmd</code>.</p>
+
+        <h2 class="doc-h2">Model & Effort</h2>
+        <div class="cmd-ref">
+          <div class="cmd">/models</div>
+          <div class="desc">Interactive model selector with <code>↑↓</code> navigation.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/mode &lt;name&gt;</div>
+          <div class="desc">Quick-switch to a model: <code>/mode claude</code>, <code>/mode default</code>.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/effort &lt;level&gt;</div>
+          <div class="desc">Set reasoning: <code>low</code>, <code>medium</code>, <code>high</code>, <code>very-high</code>.</div>
+        </div>
+
+        <h2 class="doc-h2">Planning & Output</h2>
+        <div class="cmd-ref">
+          <div class="cmd">/plan on</div>
+          <div class="desc">Outline approach before every response.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/plan off</div>
+          <div class="desc">Turn off plan mode.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/auto on</div>
+          <div class="desc">Skip approval prompts (use with caution).</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/auto off</div>
+          <div class="desc">Require approval for all tool calls.</div>
+        </div>
+
+        <h2 class="doc-h2">Branching & History</h2>
+        <div class="cmd-ref">
+          <div class="cmd">/branch save &lt;name&gt;</div>
+          <div class="desc">Snapshot conversation state for later restore.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/branch load &lt;name&gt;</div>
+          <div class="desc">Restore a saved branch.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/branch list</div>
+          <div class="desc">Show all saved branches.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/memory add &lt;text&gt;</div>
+          <div class="desc">Save a persistent memory note (cross-session).</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/shell-history inject</div>
+          <div class="desc">Add recent bash/zsh history to context.</div>
+        </div>
+
+        <h2 class="doc-h2">Themes & Display</h2>
+        <div class="cmd-ref">
+          <div class="cmd">/themes &lt;name&gt;</div>
+          <div class="desc">Switch theme: <code>midnight</code>, <code>light</code>, <code>midnight-cb</code>, <code>light-cb</code>.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/theme-load &lt;path&gt;</div>
+          <div class="desc">Load a custom <code>.mai</code> theme file.</div>
+        </div>
+
+        <h2 class="doc-h2">Plugins & Store</h2>
+        <div class="cmd-ref">
+          <div class="cmd">/store browse</div>
+          <div class="desc">Browse the GitHub-backed plugin store.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/store install &lt;name&gt;</div>
+          <div class="desc">Install plugin: <code>/store install author/namespace.plugin</code>.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/store upload &lt;path&gt;</div>
+          <div class="desc">Publish your <code>.mmd</code> plugin publicly.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/plugin-load &lt;path&gt;</div>
+          <div class="desc">Load a local <code>.mmd</code> plugin file.</div>
+        </div>
+
+        <h2 class="doc-h2">Cost & Analytics</h2>
+        <div class="cmd-ref">
+          <div class="cmd">/cost</div>
+          <div class="desc">Session token usage and estimated spend.</div>
+        </div>
+
+        <h2 class="doc-h2">Approvals</h2>
+        <div class="cmd-ref">
+          <div class="cmd">/approvals</div>
+          <div class="desc">List all <code>[W]</code> Always-Allow rules.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/approvals clear</div>
+          <div class="desc">Wipe all saved approval rules.</div>
+        </div>
+
+        <h2 class="doc-h2">Keys & API</h2>
+        <div class="cmd-ref">
+          <div class="cmd">/api-key [key]</div>
+          <div class="desc">Save server key (or omit for hidden prompt).</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/api-key clear</div>
+          <div class="desc">Remove saved key.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/api-key-nvidia &lt;key&gt;</div>
+          <div class="desc">Set NVIDIA NIM key.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/codex-login</div>
+          <div class="desc">Sign in to OpenAI Codex via browser OAuth.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/codex-logout</div>
+          <div class="desc">Sign out of Codex.</div>
+        </div>
+
+        <h2 class="doc-h2">Custom Endpoints</h2>
+        <div class="cmd-ref">
+          <div class="cmd">/add-ollama &lt;name&gt; [host] [port]</div>
+          <div class="desc">Add Ollama instance. Defaults: <code>localhost 11434</code>.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/custom &lt;url&gt; [model] [key]</div>
+          <div class="desc">Point at OpenAI-compatible server (LM Studio, vLLM, OpenRouter).</div>
+        </div>
+
+        <h2 class="doc-h2">Workspace & Utilities</h2>
+        <div class="cmd-ref">
+          <div class="cmd">/init</div>
+          <div class="desc">Generate <code>MAHANAI.md</code> workspace context file.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/cmd</div>
+          <div class="desc">Fuzzy-search all commands.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/help</div>
+          <div class="desc">Show this reference.</div>
+        </div>
+        <div class="cmd-ref">
+          <div class="cmd">/exit, /quit</div>
+          <div class="desc">Exit MahanAI.</div>
+        </div>
+      </section>
+
+      <!-- Configuration -->
+      <section class="doc-section" id="config">
+        <h1 class="doc-h1">Configuration</h1>
+        <p class="doc-lead">Save API keys securely, configure per-project defaults, and set environment variables.</p>
+
+        <h2 class="doc-h2">Configuration Directory</h2>
+        <ul class="doc-ul">
+          <li><strong>Linux/macOS:</strong> <code>~/.config/mahanai/config.json</code></li>
+          <li><strong>Windows:</strong> <code>%APPDATA%\MahanAI\config.json</code></li>
+        </ul>
+        <p class="doc-p">Override location with <code>MAHANAI_CONFIG_DIR</code> environment variable.</p>
+
+        <h2 class="doc-h2">Project Config (.mahanairc)</h2>
+        <p class="doc-p">Place a <code>.mahanairc</code> file in any project root to auto-load context and plugins:</p>
+        <div class="code-block"><code>load(location="context.md" type=context)
+load(location="plugins/my-plugin.mmd" type=mmd)
+load(python-dev-kit)</code></div>
+
+        <p class="doc-p">MahanAI scans upward from the current directory and applies the first <code>.mahanairc</code> it finds.</p>
+
+        <h2 class="doc-h2">Environment Variables</h2>
+        <div class="table-scroll">
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Variable</th>
+                <th>Purpose</th>
+                <th>Example</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>MAHANAI_MODEL</code></td>
+                <td>Default model override</td>
+                <td><code>claude</code>, <code>codex</code></td>
+              </tr>
+              <tr>
+                <td><code>MAHANAI_API_KEY</code></td>
+                <td>Override saved server key</td>
+                <td><code>sk-xxxx</code></td>
+              </tr>
+              <tr>
+                <td><code>MAHANAI_STREAM</code></td>
+                <td>Enable/disable response streaming</td>
+                <td><code>0</code> to disable, default is <code>1</code></td>
+              </tr>
+              <tr>
+                <td><code>MAHANAI_CONFIG_DIR</code></td>
+                <td>Override config directory</td>
+                <td><code>/etc/mahanai</code></td>
+              </tr>
+              <tr>
+                <td><code>NO_COLOR</code></td>
+                <td>Disable terminal colors</td>
+                <td>Any value to disable</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 class="doc-h2">Command-Line Flags</h2>
+        <div class="code-block"><code>$ mahanai --help                           # show all flags
+$ mahanai --server --port 9000             # start gateway on port 9000
+$ mahanai --server --type anthropic        # serve Anthropic-compatible format
+$ mahanai --compact                        # compact terminal mode
+$ mahanai --no-stream                      # wait for full response</code></div>
+      </section>
+
+      <!-- Gateway Server -->
+      <section class="doc-section" id="gateway">
+        <h1 class="doc-h1">Gateway Server</h1>
+        <p class="doc-lead">Run a local HTTP server that exposes all your providers behind one OpenAI- or Anthropic-compatible endpoint.</p>
+
+        <h2 class="doc-h2">Start the Gateway</h2>
+        <div class="code-block"><code>$ mahanai --server                          # OpenAI-compatible, port 8080
+$ mahanai --server --port 9000             # Custom port
+$ mahanai --server --type anthropic        # Anthropic-compatible format</code></div>
+
+        <h2 class="doc-h2">Use with Clients</h2>
+        <p class="doc-p">Point any OpenAI-compatible tool at the gateway:</p>
+        <ul class="doc-ul">
+          <li><strong>Cursor, Continue.dev, Claude Code:</strong> Set API endpoint to <code>http://localhost:8080</code></li>
+          <li><strong>LM Studio, vLLM, Others:</strong> Set base URL to <code>http://localhost:8080/v1</code></li>
+          <li><strong>curl:</strong> <code>curl -X POST http://localhost:8080/v1/chat/completions -H "Content-Type: application/json" ...</code></li>
+        </ul>
+
+        <h2 class="doc-h2">Model Routing</h2>
+        <p class="doc-p">Use the <code>model</code> field to select backend:</p>
+        <ul class="doc-ul">
+          <li><code>claude-haiku-4-5</code> → Anthropic Claude Haiku 4.5</li>
+          <li><code>claude-sonnet-4-6</code> → Anthropic Claude Sonnet 4.6</li>
+          <li><code>gpt-5</code> → OpenAI Codex</li>
+          <li><code>llama-3.3-70b</code> → NVIDIA NIM</li>
+          <li><code>my-ollama-model</code> → Your Ollama instance</li>
+        </ul>
+
+        <div class="note">
+          <strong>Format Conversion:</strong> The gateway automatically converts between OpenAI and Anthropic formats, including streaming (SSE) in both directions. Your client doesn't need to know about backend differences.
+        </div>
+
+        <h2 class="doc-h2">Endpoints</h2>
+        <ul class="doc-ul">
+          <li><code>POST /v1/chat/completions</code> — Standard OpenAI completions</li>
+          <li><code>POST /v1/messages</code> — Anthropic messages (when <code>--type anthropic</code>)</li>
+          <li><code>GET /v1/models</code> — List all available models</li>
+          <li><code>GET /health</code> — Health check</li>
+        </ul>
+
+        <h2 class="doc-h2">Browser UI</h2>
+        <p class="doc-p">When the gateway is running, open <code>http://localhost:8080</code> in your browser for a chat interface.</p>
+      </section>
+
+      <!-- Plugin Development -->
+      <section class="doc-section" id="plugins">
+        <h1 class="doc-h1">Plugin Development</h1>
+        <p class="doc-lead">Write <code>.mmd</code> plugin files to extend MahanAI with new slash commands.</p>
+
+        <h2 class="doc-h2">Plugin Anatomy</h2>
+        <p class="doc-p">A plugin is a <code>.mmd</code> (Mahan Markdown) file that declares commands and their handlers:</p>
+        <div class="code-block"><code>---
+name: mycompany.my-plugin
+displayName: My Cool Plugin
+version: 1.0.0
+description: Adds custom slash commands
+permissions: [shell, file, web]
+---
+
+# /mycommand
+
+Runs a custom operation.
+
+* param1: string - description
+* param2: optional number
+
+## Implementation
+
+This delegates to Claude Code or MahanAI itself.</code></div>
+
+        <h2 class="doc-h2">Frontmatter</h2>
+        <ul class="doc-ul">
+          <li><code>name</code> (required) — namespace.plugin-name (for store publishing)</li>
+          <li><code>displayName</code> — Human-readable plugin name</li>
+          <li><code>version</code> — Semantic version (e.g., 1.0.0)</li>
+          <li><code>description</code> — Short plugin description</li>
+          <li><code>permissions</code> — Array of requested permissions: <code>shell</code>, <code>file</code>, <code>web</code>, etc.</li>
+        </ul>
+
+        <h2 class="doc-h2">Declaring Commands</h2>
+        <p class="doc-p">Each <code># /commandname</code> heading defines a new slash command:</p>
+        <div class="code-block"><code"># /gitpush
+
+Pushes changes to the remote, with guardrails.
+
+* branch: string - branch name (defaults to current)
+* message: string - optional custom message
+
+## Implementation
+
+Validates the branch, shows a diff, asks for confirmation.</code></div>
+
+        <h2 class="doc-h2">Built-in Integrations</h2>
+        <ul class="doc-ul">
+          <li><strong>Claude Code:</strong> Delegate reasoning to Claude Code, which returns results to MahanAI</li>
+          <li><strong>Shell:</strong> Execute shell commands with MahanAI's approval-first runtime</li>
+          <li><strong>File I/O:</strong> Read/write files with inline diffs</li>
+          <li><strong>Web Search:</strong> Search the web and inject results into context</li>
+        </ul>
+
+        <h2 class="doc-h2">Publishing to the Store</h2>
+        <div class="code-block"><code>$ /store upload path/to/my-plugin.mmd</code></div>
+
+        <p class="doc-p">This will:</p>
+        <ol class="doc-ol">
+          <li>Create a public GitHub repository under <code>maifoundation/plugins/</code></li>
+          <li>Push your <code>.mmd</code> file and create a release</li>
+          <li>Tag it so it appears in <code>/store browse</code></li>
+        </ol>
+
+        <h2 class="doc-h2">Installing Plugins</h2>
+        <div class="code-block"><code>$ /store install mycompany/my-plugin
+$ /store browse                    # see all available plugins
+$ /plugin-load ./local-plugin.mmd  # load from local file</code></div>
+      </section>
+
+      <!-- Theme Development -->
+      <section class="doc-section" id="themes">
+        <h1 class="doc-h1">Theme Development</h1>
+        <p class="doc-lead">Create custom terminal themes with <code>.mai</code> files. Define colors, gradients, and display names.</p>
+
+        <h2 class="doc-h2">Theme Anatomy</h2>
+        <p class="doc-p">A <code>.mai</code> theme file is a declarative config:</p>
+        <div class="code-block"><code>theme.name        = my-theme
+theme.pretty.name = My Custom Theme
+
+// Colors
+blue = #5B8DEF
+gold = #F5C842
+red  = #FF5350
+
+// Gradients
+banner = gradient("blue -> purple -> gold")
+
+// Text colors
+ascii-art.default.color = gradient("blue -> gold")
+message.ai.color        = color("blue")
+message.user.color      = color("gold")
+message.ai.name         = text("assistant")
+message.user.name       = text("you")</code></div>
+
+        <h2 class="doc-h2">Built-in Themes</h2>
+        <ul class="doc-ul">
+          <li><code>midnight</code> — Dark blues and purples</li>
+          <li><code>light</code> — Light background, high contrast</li>
+          <li><code>midnight-cb</code> — Colorblind-friendly dark version</li>
+          <li><code>light-cb</code> — Colorblind-friendly light version</li>
+        </ul>
+
+        <h2 class="doc-h2">Switch Themes</h2>
+        <div class="code-block"><code>$ /themes midnight        # switch to built-in theme
+$ /theme-load mytheme.mai # load custom theme</code></div>
+
+        <h2 class="doc-h2">Color Functions</h2>
+        <ul class="doc-ul">
+          <li><code>color("name")</code> — Reference a named color</li>
+          <li><code>gradient("color1 -> color2 -> color3")</code> — Define a gradient</li>
+          <li><code>text("string")</code> — Display text literally</li>
+        </ul>
+
+        <h2 class="doc-h2">Available Properties</h2>
+        <div class="table-scroll">
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>ascii-art.default.color</code></td>
+                <td>Banner gradient</td>
+              </tr>
+              <tr>
+                <td><code>message.ai.color</code></td>
+                <td>MahanAI message text color</td>
+              </tr>
+              <tr>
+                <td><code>message.user.color</code></td>
+                <td>User message text color</td>
+              </tr>
+              <tr>
+                <td><code>status.model.color</code></td>
+                <td>Model name in status line</td>
+              </tr>
+              <tr>
+                <td><code>approval.allow.color</code></td>
+                <td>Allow button color</td>
+              </tr>
+              <tr>
+                <td><code>approval.deny.color</code></td>
+                <td>Deny button color</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- API & Environment -->
+      <section class="doc-section" id="api">
+        <h1 class="doc-h1">API & Environment</h1>
+        <p class="doc-lead">Reference for API keys, environment variables, and advanced configuration.</p>
+
+        <h2 class="doc-h2">API Keys</h2>
+        <div class="table-scroll">
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Setup Method</th>
+                <th>Secure Storage</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Claude</strong></td>
+                <td>Install <a href="https://claude.ai/code" target="_blank">Claude Code</a> and sign in</td>
+                <td>Handled by Claude Code, not MahanAI</td>
+              </tr>
+              <tr>
+                <td><strong>NVIDIA NIM</strong></td>
+                <td><code>/api-key-nvidia your-key</code></td>
+                <td><code>~/.config/mahanai/config.json</code></td>
+              </tr>
+              <tr>
+                <td><strong>Codex</strong></td>
+                <td><code>/codex-login</code> (browser OAuth)</td>
+                <td>Tokens auto-refresh</td>
+              </tr>
+              <tr>
+                <td><strong>Custom</strong></td>
+                <td><code>/api-key your-key</code></td>
+                <td><code>~/.config/mahanai/config.json</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 class="doc-h2">Environment Variables (Full List)</h2>
+        <div class="table-scroll">
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Variable</th>
+                <th>Type</th>
+                <th>Default</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>MAHANAI_MODEL</code></td>
+                <td>string</td>
+                <td><code>claude</code></td>
+                <td>Default model name</td>
+              </tr>
+              <tr>
+                <td><code>MAHANAI_API_KEY</code></td>
+                <td>string</td>
+                <td>(none)</td>
+                <td>Override saved API key</td>
+              </tr>
+              <tr>
+                <td><code>MAHANAI_STREAM</code></td>
+                <td>0 or 1</td>
+                <td><code>1</code></td>
+                <td>Enable response streaming</td>
+              </tr>
+              <tr>
+                <td><code>MAHANAI_CONFIG_DIR</code></td>
+                <td>path</td>
+                <td><code>~/.config/mahanai</code></td>
+                <td>Config directory override</td>
+              </tr>
+              <tr>
+                <td><code>NO_COLOR</code></td>
+                <td>flag</td>
+                <td>(none)</td>
+                <td>Disable terminal colors</td>
+              </tr>
+              <tr>
+                <td><code>MAHANAI_LOG_LEVEL</code></td>
+                <td>string</td>
+                <td><code>info</code></td>
+                <td>debug, info, warning, error</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 class="doc-h2">File Storage Locations</h2>
+        <div class="table-scroll">
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Linux/macOS</th>
+                <th>Windows</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>config.json</code></td>
+                <td><code>~/.config/mahanai/</code></td>
+                <td><code>%APPDATA%\MahanAI\</code></td>
+              </tr>
+              <tr>
+                <td><code>history.jsonl</code></td>
+                <td><code>~/.config/mahanai/</code></td>
+                <td><code>%APPDATA%\MahanAI\</code></td>
+              </tr>
+              <tr>
+                <td><code>branches/</code></td>
+                <td><code>~/.config/mahanai/branches/</code></td>
+                <td><code>%APPDATA%\MahanAI\branches\</code></td>
+              </tr>
+              <tr>
+                <td><code>plugins/</code></td>
+                <td><code>~/.config/mahanai/plugins/</code></td>
+                <td><code>%APPDATA%\MahanAI\plugins\</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 class="doc-h2">config.json Structure</h2>
+        <div class="code-block"><code">{
+  "default_model": "claude-haiku-4-5",
+  "theme": "midnight",
+  "api_keys": {
+    "nvidia": "your-nvidia-key",
+    "custom": "your-custom-key"
+  },
+  "models": {
+    "ollama": {"host": "localhost", "port": 11434},
+    "lm_studio": {"url": "http://localhost:8000", "model": "model-name"}
+  },
+  "approvals": {
+    "shell": true,
+    "file": true
+  }
+}</code></div>
+
+        <h2 class="doc-h2">Streaming (SSE)</h2>
+        <p class="doc-p">By default, MahanAI streams responses using Server-Sent Events (SSE). This allows:</p>
+        <ul class="doc-ul">
+          <li>Real-time token delivery while the model generates</li>
+          <li>Format conversion end-to-end (OpenAI → Anthropic, etc.)</li>
+          <li>Cancellation support via <code>Ctrl+C</code></li>
+        </ul>
+
+        <p class="doc-p">Disable streaming:</p>
+        <div class="code-block"><code>$ MAHANAI_STREAM=0 mahanai
+$ /stream off</code></div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ── FOOTER ─────────────────────────────────────────── -->
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="footer-logo">
+      <img src="assets/mahan-mark.png" alt="">
+      <span><b>MahanAI</b> · The MahanAI Foundation</span>
+    </div>
+    <div class="footer-spacer"></div>
+    <div class="footer-links">
+      <a href="index.html">Home</a>
+      <a href="docs.html">Docs</a>
+      <a href="https://github.com/maifoundation/mahanai" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://pypi.org/project/mahanai/" target="_blank" rel="noopener">PyPI</a>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top: 24px;">
+    <div class="footer-meta">// mahanai · full featured documentation · ©&nbsp;2026 · MIT</div>
+  </div>
+</footer>
+
+<script>
+  // Navigation
+  document.querySelectorAll('.nav-link').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const sectionId = link.dataset.section;
+
+      // Hide all sections
+      document.querySelectorAll('.doc-section').forEach(s => s.classList.remove('active'));
+      // Remove active class from all links
+      document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+
+      // Show selected section
+      document.getElementById(sectionId).classList.add('active');
+      link.classList.add('active');
+      window.scrollTo(0, 0);
+    });
+  });
+
+  // Lucide icons
+  if (window.lucide) window.lucide.createIcons();
+</script>
+
+</body>
+</html>

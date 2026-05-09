@@ -591,15 +591,14 @@
     </a>
     <div class="nav-links">
       <a href="#features">Features</a>
+      <a href="#plugins">Plugins</a>
       <a href="#gateway">Gateway</a>
-      <a href="#commands">Commands</a>
-      <a href="#install">Install</a>
-      <a href="https://mahancreate.github.io/mahanai" target="_blank" rel="noopener">Docs</a>
+      <a href="docs.html">Docs</a>
     </div>
     <div class="nav-spacer"></div>
-    <a class="nav-cta" href="https://github.com/mahancreate/mahanai" target="_blank" rel="noopener">
+    <a class="nav-cta" href="https://github.com/maifoundation/mahanai" target="_blank" rel="noopener">
       <span class="star">★</span>
-      mahancreate/mahanai
+      maifoundation/mahanai
     </a>
   </div>
 </nav>
@@ -608,21 +607,20 @@
 <section class="hero">
   <div class="wrap">
     <div class="pill">
-      <span class="tag">Super 2.0</span>
-      <span>now with claude haiku 4.5 default</span>
+      <span class="tag">Max 2.0</span>
+      <span>plugin ecosystem · gateway · multi-model</span>
       <span class="arr">→</span>
     </div>
 
     <h1 class="headline">
-      The <span class="grad">perfect</span><br>
-      coding agent.
+      A terminal AI agent<br>
+      <span class="grad">with plugins</span>.
     </h1>
 
     <p class="sub">
       Terminal-first. Multi-model. Approvals-first.<br>
-      <b style="color:var(--fg-1);">MahanAI</b> runs in your shell, routes to
-      <code>claude</code>, <code>codex</code>, <code>nvidia</code>, or any
-      OpenAI-compatible endpoint, and asks before it touches a thing.
+      <b style="color:var(--fg-1);">MahanAI</b> gives you a chat interface, agentic tool use, a local
+      gateway server, and a plugin ecosystem—with custom themes and conversation branching.
     </p>
 
     <div class="hero-cta">
@@ -630,7 +628,7 @@
         <i data-lucide="terminal"></i>
         Get started
       </a>
-      <a class="btn ghost" href="https://github.com/mahancreate/mahanai" target="_blank" rel="noopener">
+      <a class="btn ghost" href="https://github.com/maifoundation/mahanai" target="_blank" rel="noopener">
         <i data-lucide="github"></i>
         View on GitHub
       </a>
@@ -651,16 +649,16 @@
 
     <div class="hero-stats">
       <div class="stat">
-        <div class="num">12+</div>
-        <div class="lbl">Models supported</div>
+        <div class="num">60+</div>
+        <div class="lbl">Slash commands</div>
       </div>
       <div class="stat">
-        <div class="num">4</div>
+        <div class="num">7+</div>
         <div class="lbl">Provider backends</div>
       </div>
       <div class="stat">
-        <div class="num">1</div>
-        <div class="lbl">Local gateway</div>
+        <div class="num">∞</div>
+        <div class="lbl">Plugins & themes</div>
       </div>
       <div class="stat">
         <div class="num">0</div>
@@ -688,7 +686,7 @@
 ██║ ╚═╝ ██║██║  ██║██║  ██║██║  ██║██║ ╚████║██║  ██║██║
 ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝</pre>
         <div class="rule">================================================================</div>
-        <div class="term-meta"><b>Super 2.0</b> &nbsp;|&nbsp; Claude Haiku 4.5 &nbsp;|&nbsp; <span class="dim">/api-key to save key (persists)</span></div>
+        <div class="term-meta"><b>Max 2.0</b> &nbsp;|&nbsp; Claude Haiku 4.5 &nbsp;|&nbsp; <span class="dim">/api-key to save key (persists)</span></div>
         <div class="dim">Replies stream live (MAHANAI_STREAM=0 to wait for full text)</div>
         <div class="cmd-line">/help  /exit  /quit</div>
         <div class="rule">================================================================</div>
@@ -739,84 +737,85 @@
         <div class="model-list">
           <div class="model-row">
             <span class="prov">Claude</span>
-            <span class="nm">Claude Haiku 4.5</span>
+            <span class="nm">Claude Haiku 4.5 · Default</span>
             <span class="spacer"></span>
-            <span class="id">claude-haiku-4-5 · default</span>
+            <span class="id">claude-haiku-4-5</span>
           </div>
           <div class="model-row">
             <span class="prov">Claude</span>
-            <span class="nm">Claude Sonnet 4.6</span>
+            <span class="nm">Claude Sonnet 4.6, Opus</span>
             <span class="spacer"></span>
             <span class="id">/mode claude</span>
           </div>
           <div class="model-row">
             <span class="prov">Codex</span>
-            <span class="nm">GPT-5.4 · GPT-5.2-Codex</span>
+            <span class="nm">GPT-5 · OpenAI Codex</span>
             <span class="spacer"></span>
             <span class="id">/codex-login</span>
           </div>
           <div class="model-row">
-            <span class="prov">NVIDIA</span>
+            <span class="prov">NVIDIA NIM</span>
             <span class="nm">Llama 3.3 70B</span>
             <span class="spacer"></span>
             <span class="id">/api-key-nvidia</span>
           </div>
           <div class="model-row">
-            <span class="prov">Custom</span>
-            <span class="nm">Any OpenAI-compatible endpoint</span>
+            <span class="prov">Ollama</span>
+            <span class="nm">Any local model</span>
             <span class="spacer"></span>
-            <span class="id">/custom &lt;url&gt; &lt;model&gt;</span>
+            <span class="id">/add-ollama</span>
+          </div>
+          <div class="model-row">
+            <span class="prov">Custom</span>
+            <span class="nm">OpenAI-compatible API</span>
+            <span class="spacer"></span>
+            <span class="id">/custom &lt;url&gt;</span>
           </div>
         </div>
       </div>
 
       <div class="card w2">
-        <div class="ico"><i data-lucide="shield-check"></i></div>
-        <h3>Approvals, always.</h3>
+        <div class="ico"><i data-lucide="package"></i></div>
+        <h3>Plugin store.</h3>
         <p>
-          Every shell, git, gh, and file op prompts with
-          <code>[A] [W] [D]</code>. Destructive commands are flagged and
-          Always-Allow is disabled. No surprises.
+          Install community <code>.mmd</code> plugins with <code>/store install</code>,
+          publish your own with <code>/store upload</code>. GitHub-backed.
         </p>
       </div>
 
       <div class="card w2">
-        <div class="ico"><i data-lucide="network"></i></div>
-        <h3>Local gateway.</h3>
+        <div class="ico"><i data-lucide="git-branch"></i></div>
+        <h3>Conversation branching.</h3>
         <p>
-          <code>mahanai --server</code> exposes every provider behind one
-          OpenAI- or Anthropic-compatible endpoint. Point Cursor, Continue,
-          or Claude Code at it.
+          <code>/branch save</code> snapshots state, <code>/branch load</code>
+          restores. Explore multiple paths without losing work.
         </p>
       </div>
 
       <div class="card w2">
-        <div class="ico"><i data-lucide="palette"></i></div>
-        <h3>Four themes.</h3>
+        <div class="ico"><i data-lucide="bell"></i></div>
+        <h3>Desktop notifications.</h3>
         <p>
-          <code>midnight</code>, <code>light</code>, and
-          colorblind-friendly variants. The banner gradient, prompt, and
-          status colors all update together.
+          Get pinged when a long generation finishes. Focus elsewhere,
+          stay in the loop.
         </p>
       </div>
 
       <div class="card w2">
-        <div class="ico"><i data-lucide="gauge"></i></div>
-        <h3>Effort dial.</h3>
+        <div class="ico"><i data-lucide="terminal"></i></div>
+        <h3>Shell history.</h3>
         <p>
-          <code>/effort low|medium|high|very-high</code> maps to
-          reasoning.effort on Codex and prepends thinking guidance on
-          Claude. One knob, every backend.
+          <code>/shell-history inject</code> adds recent bash/zsh history
+          to context. Code suggestions know your workflow.
         </p>
       </div>
 
       <div class="card w2">
-        <div class="ico"><i data-lucide="list-checks"></i></div>
-        <h3>Plan mode.</h3>
+        <div class="ico"><i data-lucide="dollar-sign"></i></div>
+        <h3>Cost tracking.</h3>
         <p>
-          <code>/plan on</code> makes MahanAI outline its approach
-          before every response. Useful for multi-step refactors where
-          you want to read the plan before code moves.
+          <code>/cost</code> shows session token usage and estimated spend
+          across all backends.
         </p>
       </div>
 
@@ -845,10 +844,59 @@
   </div>
 </section>
 
+<!-- ── PLUGINS & THEMES ──────────────────────────────────── -->
+<section class="section" id="plugins">
+  <div class="wrap">
+    <div class="eyebrow">§ 02b · plugins & themes</div>
+    <h2 class="s-title">Extend & customize<br>without limits.</h2>
+    <p class="s-lead">
+      Write your own <code>.mmd</code> plugins to add slash commands, delegate to Claude Code or the shell, and publish to the store. Custom <code>.mai</code> themes with gradients, color aliases, and display overrides.
+    </p>
+
+    <div class="grid">
+      <div class="card w3">
+        <div class="ico"><i data-lucide="package"></i></div>
+        <h3>Plugin store</h3>
+        <p>
+          <code>/store browse</code> to find plugins. <code>/store install author/namespace.plugin</code> to add one.
+          <code>/store upload path/to/plugin.mmd</code> publishes yours publicly.
+        </p>
+      </div>
+
+      <div class="card w3">
+        <div class="ico"><i data-lucide="palette"></i></div>
+        <h3>Custom themes</h3>
+        <p>
+          Write a <code>.mai</code> file with gradients, color aliases, and display name overrides.
+          <code>/theme-load mytheme.mai</code> to apply. Includes four built-in themes.
+        </p>
+      </div>
+
+      <div class="card w3">
+        <div class="ico"><i data-lucide="file-text"></i></div>
+        <h3>Project config</h3>
+        <p>
+          Place a <code>.mahanairc</code> in your project root to auto-load context files, plugins, and enable
+          dev kit extras scoped to that workspace.
+        </p>
+      </div>
+
+      <div class="card w3">
+        <div class="ico"><i data-lucide="git-branch"></i></div>
+        <h3>Conversation branching</h3>
+        <p>
+          <code>/branch save milestone</code> snapshots state. <code>/branch load</code> to restore.
+          Explore multiple refactor paths or reasoning chains without losing work.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ── GATEWAY ────────────────────────────────────────── -->
 <section class="section" id="gateway">
   <div class="wrap">
-    <div class="eyebrow">§ 02 · gateway</div>
+    <div class="eyebrow">§ 03 · gateway</div>
     <h2 class="s-title">One endpoint.<br>Every provider.</h2>
     <p class="s-lead">
       <code>mahanai --server --port 8080 --type openai</code> — a local HTTP
@@ -892,7 +940,7 @@
 <!-- ── APPROVALS ──────────────────────────────────────── -->
 <section class="section" id="approvals">
   <div class="wrap">
-    <div class="eyebrow">§ 03 · approvals</div>
+    <div class="eyebrow">§ 04 · approvals</div>
     <h2 class="s-title">It asks before<br>it acts.</h2>
     <p class="s-lead">
       MahanAI's tool runtime stops at every shell, git, gh, and file op. You
@@ -951,7 +999,7 @@
 <!-- ── COMMANDS ───────────────────────────────────────── -->
 <section class="section" id="commands">
   <div class="wrap">
-    <div class="eyebrow">§ 04 · reference</div>
+    <div class="eyebrow">§ 05 · reference</div>
     <h2 class="s-title">Every command<br>is a slash away.</h2>
     <p class="s-lead">
       Slash-prefixed, lowercase, kebab-case when multi-word. POSIX flags
@@ -964,8 +1012,8 @@
         <span class="desc">Interactive model selector. <b>↑↓</b> to navigate, <b>Enter</b> to confirm, <b>Esc</b> to cancel.</span>
       </div>
       <div class="cmd-row">
-        <span class="cmd">/mode claude</span>
-        <span class="desc">Quick-switch to Claude Sonnet 4.6. <code>/mode default</code> switches back.</span>
+        <span class="cmd">/mode &lt;name&gt;</span>
+        <span class="desc">Quick-switch to a model. <code>/mode claude</code> or <code>/mode default</code>.</span>
       </div>
       <div class="cmd-row">
         <span class="cmd">/effort &lt;level&gt;</span>
@@ -973,11 +1021,51 @@
       </div>
       <div class="cmd-row">
         <span class="cmd">/plan on · /plan off</span>
-        <span class="desc">Toggle plan mode. MahanAI outlines its approach before every response.</span>
+        <span class="desc">Toggle plan mode. Outlines approach before every response.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/auto on · /auto off</span>
+        <span class="desc">Toggle autonomous mode (skip approval prompts).</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/branch save &lt;name&gt;</span>
+        <span class="desc">Snapshot conversation state for later restore.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/branch load &lt;name&gt;</span>
+        <span class="desc">Restore a saved conversation branch.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/store browse</span>
+        <span class="desc">Browse the GitHub-backed plugin store.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/store install &lt;name&gt;</span>
+        <span class="desc">Install a plugin. Format: <code>author/namespace.plugin.name</code>.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/plugin-load &lt;path&gt;</span>
+        <span class="desc">Load a local <code>.mmd</code> plugin file.</span>
       </div>
       <div class="cmd-row">
         <span class="cmd">/themes &lt;name&gt;</span>
         <span class="desc">Switch theme: <b>midnight</b>, <b>light</b>, <b>midnight-cb</b>, <b>light-cb</b>.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/theme-load &lt;path&gt;</span>
+        <span class="desc">Load a custom <code>.mai</code> theme file.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/cost</span>
+        <span class="desc">Show session token usage and estimated spend.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/memory add &lt;text&gt;</span>
+        <span class="desc">Save a persistent memory note.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/shell-history inject</span>
+        <span class="desc">Add recent bash/zsh history to context.</span>
       </div>
       <div class="cmd-row">
         <span class="cmd">/approvals · /approvals clear</span>
@@ -992,8 +1080,24 @@
         <span class="desc">Save server API key. Omit to enter via hidden prompt. <code>/api-key clear</code> removes it.</span>
       </div>
       <div class="cmd-row">
+        <span class="cmd">/api-key-nvidia &lt;key&gt;</span>
+        <span class="desc">Save NVIDIA NIM API key specifically.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/add-ollama &lt;name&gt; &lt;host&gt; &lt;port&gt;</span>
+        <span class="desc">Add an Ollama instance. Default: <code>localhost 11434</code>.</span>
+      </div>
+      <div class="cmd-row">
         <span class="cmd">/custom &lt;url&gt; [model] [key]</span>
         <span class="desc">Point at any OpenAI-compatible server — Ollama, LM Studio, vLLM, OpenRouter.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/cmd</span>
+        <span class="desc">Fuzzy-search all 60+ commands.</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd">/init</span>
+        <span class="desc">Generate a <code>MAHANAI.md</code> workspace context file.</span>
       </div>
       <div class="cmd-row">
         <span class="cmd">/help · /exit · /quit</span>
@@ -1006,10 +1110,10 @@
 <!-- ── INSTALL ────────────────────────────────────────── -->
 <section class="section" id="install">
   <div class="wrap">
-    <div class="eyebrow">§ 05 · install</div>
+    <div class="eyebrow">§ 06 · install</div>
     <h2 class="s-title">Two lines. That's it.</h2>
     <p class="s-lead">
-      MahanAI ships on PyPI. One import, one command, you're in the loop.
+      MahanAI ships on PyPI. An onboarding wizard runs on first launch to help you pick a model and set up API keys.
     </p>
 
     <div class="install-row" style="margin-top: 0; max-width: 780px;">
@@ -1027,16 +1131,16 @@
 
     <div style="margin-top: 32px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;" class="install-detail-grid">
       <div class="card" style="padding: 22px;">
-        <h3 style="font-size: 16px; margin-bottom: 10px;">Compact mode</h3>
-        <p style="font-size: 13.5px;"><code>mahanai --compact</code> · small MAI banner, trimmed header.</p>
+        <h3 style="font-size: 16px; margin-bottom: 10px;">Onboarding wizard</h3>
+        <p style="font-size: 13.5px;">Pick a model, set API keys, choose theme on first run.</p>
       </div>
       <div class="card" style="padding: 22px;">
         <h3 style="font-size: 16px; margin-bottom: 10px;">Server mode</h3>
-        <p style="font-size: 13.5px;"><code>mahanai --server --port 8080</code> · local gateway.</p>
+        <p style="font-size: 13.5px;"><code>mahanai --server --port 8080</code> · OpenAI-compatible gateway.</p>
       </div>
       <div class="card" style="padding: 22px;">
-        <h3 style="font-size: 16px; margin-bottom: 10px;">No-stream</h3>
-        <p style="font-size: 13.5px;"><code>MAHANAI_STREAM=0</code> · wait for full response.</p>
+        <h3 style="font-size: 16px; margin-bottom: 10px;">Full docs</h3>
+        <p style="font-size: 13.5px;"><a href="docs.html" style="color: var(--brand-blue-bright); font-weight: 600;">Complete reference</a> · commands, config, plugins</p>
       </div>
     </div>
   </div>
@@ -1050,16 +1154,16 @@
       Start <span class="grad">shipping</span>.
     </h2>
     <p>
-      Ten seconds from pip install to a streaming chat loop with every model
-      you own, in every format you need, asking politely before it touches
-      your repo.
+      ten seconds from pip install to a streaming chat loop with every model you own,
+      a local gateway for Cursor/Continue/Claude Code, plugins, custom themes, and
+      approvals on every tool call.
     </p>
     <div class="ctas">
       <a class="btn primary" href="#install">
         <i data-lucide="download"></i>
         pip install mahanai
       </a>
-      <a class="btn ghost" href="https://mahancreate.github.io/mahanai" target="_blank" rel="noopener">
+      <a class="btn ghost" href="docs.html">
         <i data-lucide="book-open"></i>
         Read the docs
       </a>
@@ -1072,18 +1176,18 @@
   <div class="wrap footer-inner">
     <div class="footer-logo">
       <img src="assets/mahan-mark.png" alt="">
-      <span><b>MahanAI</b> · a project of The Mahan Foundation</span>
+      <span><b>MahanAI</b> · The MahanAI Foundation</span>
     </div>
     <div class="footer-spacer"></div>
     <div class="footer-links">
-      <a href="https://github.com/mahancreate/mahanai" target="_blank" rel="noopener">GitHub</a>
-      <a href="https://mahancreate.github.io/mahanai" target="_blank" rel="noopener">Docs</a>
+      <a href="https://github.com/maifoundation/mahanai" target="_blank" rel="noopener">GitHub</a>
+      <a href="docs.html">Docs</a>
       <a href="https://pypi.org/project/mahanai/" target="_blank" rel="noopener">PyPI</a>
       <a href="#features">Features</a>
     </div>
   </div>
   <div class="wrap" style="margin-top: 24px;">
-    <div class="footer-meta">// mahanai · super 2.0 · ©&nbsp;2026 · the perfect coding agent</div>
+    <div class="footer-meta">// mahanai · a terminal AI agent with a plugin ecosystem · ©&nbsp;2026 · MIT</div>
   </div>
 </footer>
 
