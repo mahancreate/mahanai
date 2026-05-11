@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Downloads](https://img.shields.io/pypi/dm/mahanai)](https://pypi.org/project/mahanai/)
 
-[📖 Docs](https://mahancreate.github.io/mahanai) · [🐛 Issues](https://github.com/maifoundation/mahanai/issues) · [🔌 Plugin Store](#plugin-store)
+[📖 Docs](https://mahancreate.github.io/mahanai) · [🐛 Issues](https://github.com/mahancreate/mahanai/issues) · [🔌 Plugin Store](https://github.com/topics/mahanai-plugin)
 
 </div>
 

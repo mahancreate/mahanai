@@ -89,6 +89,23 @@ from mahanai.mmd_parser import MmdPlugin, parse_mmd_file
 from mahanai.rc_parser import parse_rc_file
 from mahanai.system_info import describe_runtime
 from mahanai.tools import TOOLS, batch_approve_and_execute, execute_tool, normalize_tool_arguments_json, set_autonomous_mode, is_autonomous_mode
+from mahanai.chat_history import (
+    is_chat_history_setup,
+    save_chat_history_config,
+    load_chat_history_config,
+    save_project,
+    load_projects,
+    remove_project,
+    save_active_project,
+    load_active_project,
+    get_chats_dir,
+    save_chat,
+    list_chats,
+    load_chat_by_name,
+    rename_chat_file,
+    project_selector,
+    chat_selector,
+)
 
 # ── Plugin registry ───────────────────────────────────────────────────────────
 _LOADED_PLUGINS: dict[str, MmdPlugin] = {}  # name → MmdPlugin
@@ -478,6 +495,12 @@ _ALL_COMMANDS: list[tuple[str, str]] = [
     ("/history",          "List saved chat sessions"),
     ("/resume",           "Load a previous session"),
     ("/export",           "Export current session to markdown"),
+    ("/setup-chat-history", "Configure where chats are saved"),
+    ("/recall",           "Recall a previous chat into context"),
+    ("/rename-chat",      "Rename the current chat"),
+    ("/new-project",      "Register a new project for chat history"),
+    ("/project",          "Select active project (selector or name)"),
+    ("/delete-project",   "Delete a registered project"),
     ("/compare",          "Compare two models on the same message"),
     ("/index",            "Index a file/directory for RAG context"),
     ("/task",             "Run a background task"),
@@ -1554,6 +1577,14 @@ def _print_help() -> None:
         f"  /resume <id>                Load a previous session\n"
         f"  /export [path]              Export current session to markdown\n"
         f"\n"
+        f"  /setup-chat-history         Configure universal chat folder & project folder name\n"
+        f"  /recall [name]              Recall a saved chat into current context (fuzzy name match)\n"
+        f"  /rename-chat <new-name>     Rename the current chat\n"
+        f"  /new-project <path> <name> <display>  Register a project for per-project chats\n"
+        f"  /project                    Interactive project selector\n"
+        f"  /project <name>             Switch directly to a named project\n"
+        f"  /delete-project [name]      Delete a registered project\n"
+        f"\n"
         f"  /compare <m1> <m2> <msg>    Compare two models on the same message\n"
         f"\n"
         f"  /index <path>               Index a file or directory for RAG context\n"
@@ -1732,6 +1763,8 @@ def main() -> None:
     _session_id: str = _new_session_id()
     _last_response_time: float = 0.0
     _notify_threshold: float = 10.0  # seconds — notify when response takes longer than this
+    _active_project: str | None = load_active_project()
+    _current_chat_name: str | None = None  # set after first AI response
 
     # Cost tracker
     show_cost: bool = load_cost_setting()
@@ -1797,6 +1830,14 @@ def main() -> None:
 
     if (workspace / "MAHANAI.md").is_file():
         print(f"{C.OK}🤖 MAHANAI.md{C.RST} {C.DIM}loaded as project context for all providers.{C.RST}\n")
+
+    if _active_project:
+        _ap_info = load_projects().get(_active_project)
+        if _ap_info:
+            print(
+                f"{C.OK}Project:{C.RST} {_ap_info['display']}  "
+                f"{C.DIM}({_active_project})  chats → {_ap_info['chats_dir']}{C.RST}\n"
+            )
 
     if _rc_config is not None:
         _rc_note_parts = []
@@ -3271,6 +3312,210 @@ def main() -> None:
                         print(f"{C.ERR}.mahanairc reload failed: {_rc_rel_err}{C.RST}\n")
                 continue
 
+            # ── Chat history setup ─────────────────────────────────────────────
+            elif cmd == "/setup-chat-history":
+                _ch_cfg = load_chat_history_config()
+                print(f"\n{C.OK}Chat History Setup{C.RST}\n")
+                print(f"{C.DIM}Universal chats are saved regardless of project.{C.RST}")
+                print(f"{C.DIM}Per-project chats go in a subfolder inside each project root.{C.RST}\n")
+                _default_dir = _ch_cfg["universal_dir"]
+                _raw_udir = input(
+                    f"  Universal chat folder [{_default_dir}]: "
+                ).strip()
+                _udir = _raw_udir or _default_dir
+                _default_folder = _ch_cfg["project_folder_name"]
+                _raw_folder = input(
+                    f"  Per-project subfolder name [{_default_folder}]: "
+                ).strip()
+                _pfolder = _raw_folder or _default_folder
+                save_chat_history_config(_udir, _pfolder)
+                print(
+                    f"\n{C.OK}Saved.{C.RST}  Universal: {C.DIM}{_udir}{C.RST}  "
+                    f"Project subfolder: {C.DIM}{_pfolder}{C.RST}\n"
+                )
+                continue
+
+            # ── Recall a previous chat ─────────────────────────────────────────
+            elif cmd == "/recall":
+                _recall_name = rest.strip()
+                if not _recall_name:
+                    # Show selector
+                    _recall_name = chat_selector(_active_project)
+                    if not _recall_name:
+                        print(f"{C.DIM}Cancelled.{C.RST}\n")
+                        continue
+                _recall_data = load_chat_by_name(_recall_name, _active_project)
+                if not _recall_data:
+                    # Try universal if in project mode
+                    if _active_project:
+                        _recall_data = load_chat_by_name(_recall_name, None)
+                if not _recall_data:
+                    print(
+                        f"{C.ERR}Chat '{_recall_name}' not found.{C.RST} "
+                        f"Use /recall without args to browse.\n"
+                    )
+                    continue
+                _recall_msgs = _recall_data.get("messages", [])
+                _recall_context = (
+                    f"--- Recalled chat: {_recall_data['name']} "
+                    f"({len(_recall_msgs)} messages) ---\n"
+                )
+                for _rm in _recall_msgs:
+                    _rrole = "User" if _rm["role"] == "user" else "Assistant"
+                    _rcontent = _rm.get("content", "")
+                    if isinstance(_rcontent, list):
+                        _rcontent = " ".join(
+                            p.get("text", "") for p in _rcontent
+                            if isinstance(p, dict) and p.get("type") == "text"
+                        )
+                    _recall_context += f"{_rrole}: {_rcontent}\n"
+                _recall_context += "--- End of recalled chat ---"
+                history[0]["content"] += f"\n\n{_recall_context}"
+                print(
+                    f"{C.OK}Recalled:{C.RST} {_recall_data['name']}  "
+                    f"{C.DIM}({len(_recall_msgs)} messages injected into context){C.RST}\n"
+                )
+                continue
+
+            # ── Rename current chat ────────────────────────────────────────────
+            elif cmd == "/rename-chat":
+                _rn_new = rest.strip()
+                if not _rn_new:
+                    print(f"{C.ERR}Usage: /rename-chat <new-name>{C.RST}\n")
+                    continue
+                if not _current_chat_name:
+                    print(
+                        f"{C.ERR}No chat saved yet for this session.{C.RST} "
+                        f"Send at least one message first.\n"
+                    )
+                    continue
+                _rn_ok, _rn_safe = rename_chat_file(
+                    _current_chat_name, _rn_new, _active_project
+                )
+                if _rn_ok:
+                    _current_chat_name = _rn_safe
+                    print(f"{C.OK}Chat renamed to:{C.RST} {_rn_safe}\n")
+                else:
+                    print(f"{C.ERR}Could not rename chat.{C.RST}\n")
+                continue
+
+            # ── New project ────────────────────────────────────────────────────
+            elif cmd == "/new-project":
+                import shlex as _shlex
+                try:
+                    _np_parts = _shlex.split(rest)
+                except ValueError:
+                    _np_parts = rest.split()
+                if len(_np_parts) < 3:
+                    print(
+                        f"{C.ERR}Usage: /new-project <path> <project-name> <\"Display Name\">{C.RST}\n"
+                        f"{C.DIM}Example: /new-project ~/myapp myapp \"My Application\"{C.RST}\n"
+                    )
+                    continue
+                _np_path, _np_name, _np_display = _np_parts[0], _np_parts[1], _np_parts[2]
+                _np_resolved = Path(_np_path).expanduser().resolve()
+                if not _np_resolved.exists():
+                    print(
+                        f"{C.WARN}Path does not exist:{C.RST} {_np_resolved}  "
+                        f"{C.DIM}(creating anyway){C.RST}\n"
+                    )
+                save_project(_np_name, str(_np_resolved), _np_display)
+                _ch_cfg = load_chat_history_config()
+                print(
+                    f"{C.OK}Project registered:{C.RST} {_np_display}  "
+                    f"{C.DIM}({_np_name}){C.RST}\n"
+                    f"  Path: {C.DIM}{_np_resolved}{C.RST}\n"
+                    f"  Chats: {C.DIM}{_np_resolved / _ch_cfg['project_folder_name']}{C.RST}\n"
+                    f"  Use {C.OK}/project {_np_name}{C.RST} to activate.\n"
+                )
+                continue
+
+            # ── Project selector ───────────────────────────────────────────────
+            elif cmd == "/project":
+                _proj_arg = rest.strip()
+                _all_projects = load_projects()
+                if not _all_projects:
+                    print(
+                        f"{C.DIM}No projects registered yet.{C.RST} "
+                        f"Use {C.OK}/new-project{C.RST} to add one.\n"
+                    )
+                    continue
+                if _proj_arg:
+                    if _proj_arg not in _all_projects:
+                        # fuzzy
+                        _proj_match = next(
+                            (k for k in _all_projects if _proj_arg.lower() in k.lower()),
+                            None,
+                        )
+                        if not _proj_match:
+                            print(
+                                f"{C.ERR}Project '{_proj_arg}' not found.{C.RST} "
+                                f"Known: {', '.join(_all_projects)}\n"
+                            )
+                            continue
+                        _proj_arg = _proj_match
+                    _active_project = _proj_arg
+                else:
+                    _chosen_proj = project_selector(_active_project)
+                    if not _chosen_proj:
+                        print(f"{C.DIM}Cancelled.{C.RST}\n")
+                        continue
+                    _active_project = _chosen_proj
+                save_active_project(_active_project)
+                _proj_info = _all_projects[_active_project]
+                print(
+                    f"{C.OK}Active project:{C.RST} {_proj_info['display']}  "
+                    f"{C.DIM}({_active_project}){C.RST}\n"
+                    f"  Chats saved to: {C.DIM}{_proj_info['chats_dir']}{C.RST}\n"
+                )
+                # Reset current chat name so next session starts fresh in this project
+                _current_chat_name = None
+                continue
+
+            # ── Delete project ─────────────────────────────────────────────────
+            elif cmd == "/delete-project":
+                _dp_arg = rest.strip()
+                _all_projects = load_projects()
+                if not _all_projects:
+                    print(f"{C.DIM}No projects registered.{C.RST}\n")
+                    continue
+                if not _dp_arg:
+                    _dp_arg = project_selector(_active_project)
+                    if not _dp_arg:
+                        print(f"{C.DIM}Cancelled.{C.RST}\n")
+                        continue
+                if _dp_arg not in _all_projects:
+                    _dp_match = next(
+                        (k for k in _all_projects if _dp_arg.lower() in k.lower()),
+                        None,
+                    )
+                    if not _dp_match:
+                        print(
+                            f"{C.ERR}Project '{_dp_arg}' not found.{C.RST} "
+                            f"Known: {', '.join(_all_projects)}\n"
+                        )
+                        continue
+                    _dp_arg = _dp_match
+                _dp_info = _all_projects[_dp_arg]
+                _dp_confirm = input(
+                    f"  Delete project '{_dp_info['display']}' ({_dp_arg})? "
+                    f"[y/N]: "
+                ).strip().lower()
+                if _dp_confirm != "y":
+                    print(f"{C.DIM}Cancelled.{C.RST}\n")
+                    continue
+                _dp_ok = remove_project(_dp_arg)
+                if _dp_ok:
+                    if _active_project == _dp_arg:
+                        _active_project = None
+                    print(
+                        f"{C.OK}Project deleted:{C.RST} {_dp_info['display']}  "
+                        f"{C.DIM}(chat files kept in {_dp_info['chats_dir']}){C.RST}\n"
+                    )
+                else:
+                    print(f"{C.ERR}Could not delete project.{C.RST}\n")
+                continue
+
             if not _route_after_cmd:
                 print(f"{C.ERR}Unknown command.{C.RST} Try {C.DIM}/help{C.RST}\n")
                 continue
@@ -3331,7 +3576,7 @@ def main() -> None:
 
         def _post_reply(reply: str, input_text: str = "", elapsed: float = 0.0) -> None:
             """Run after each successful AI reply: highlight, token count, cost, auto-save."""
-            nonlocal last_ai_reply, _session_input_tokens, _session_output_tokens, _session_cost_usd
+            nonlocal last_ai_reply, _session_input_tokens, _session_output_tokens, _session_cost_usd, _current_chat_name
             last_ai_reply = reply
             if highlight_enabled:
                 _highlight_response(reply)
@@ -3361,6 +3606,17 @@ def main() -> None:
             if trimmed:
                 print(f"{C.DIM}[Context trimmed: {trimmed} old messages summarized to stay within {_context_limit:,} token limit]{C.RST}\n")
             _auto_save_session(_session_id, history, selected["label"])
+            # Auto-save to chat history (universal or project)
+            try:
+                _current_chat_name = save_chat(
+                    _session_id,
+                    history,
+                    selected["label"],
+                    chat_name=_current_chat_name,
+                    project_name=_active_project,
+                )
+            except Exception:
+                pass
 
         # Route based on selected model
         _reply_t0 = time.time()
