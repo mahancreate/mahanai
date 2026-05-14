@@ -1065,27 +1065,41 @@ def _model_selector(current_idx: int) -> int:
                 return current_idx
 
     except ImportError:
-        # Non-Windows fallback: numbered list
-        print("\n  Available models:\n")
-        last_group = None
-        for i, m in enumerate(AVAILABLE_MODELS):
-            if m["group"] != last_group:
-                last_group = m["group"]
-                print(f"  -- {last_group} --")
-            active = " (active)" if i == current_idx else ""
-            print(f"  {i + 1}. {m['label']}  ({m['name']}){active}")
-        print()
-        while True:
-            try:
-                raw = input("  Enter number (or press Enter to cancel): ").strip()
-                if not raw:
+        # Unix/Linux: arrow-key selector via termios
+        import sys
+        import termios
+        import tty
+
+        sel = current_idx
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            # setcbreak disables echo+canonical but keeps OPOST so \n→\r\n still works
+            tty.setcbreak(fd)
+            _draw(sel)
+            while True:
+                ch = sys.stdin.read(1)
+                if ch == "\x1b":
+                    ch2 = sys.stdin.read(1)
+                    if ch2 == "[":
+                        ch3 = sys.stdin.read(1)
+                        if ch3 == "A":      # up arrow
+                            sel = (sel - 1) % len(AVAILABLE_MODELS)
+                            _draw(sel)
+                        elif ch3 == "B":    # down arrow
+                            sel = (sel + 1) % len(AVAILABLE_MODELS)
+                            _draw(sel)
+                    else:                   # bare Esc
+                        print("\033[H\033[J", end="", flush=True)
+                        return current_idx
+                elif ch in ("\r", "\n"):    # Enter
+                    print("\033[H\033[J", end="", flush=True)
+                    return sel
+                elif ch == "\x03":          # Ctrl-C
+                    print("\033[H\033[J", end="", flush=True)
                     return current_idx
-                n = int(raw) - 1
-                if 0 <= n < len(AVAILABLE_MODELS):
-                    return n
-            except (ValueError, EOFError):
-                pass
-            print(f"  Please enter 1–{len(AVAILABLE_MODELS)}")
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
 def run_turn(
@@ -1297,11 +1311,56 @@ def _show_fileslist(workspace: Path) -> None:
     print()
 
 
+# ── Personality ───────────────────────────────────────────────────────────────
+
+GLOBAL_PERSONALITY_DIR = Path.home() / ".mahanai"
+GLOBAL_PERSONALITY_PATH = GLOBAL_PERSONALITY_DIR / "PERSONALITY.md"
+
+_PERSONALITY_TEMPLATE = """\
+Write a short description of the personality and tone you want the AI to adopt.
+You can describe the writing style, use of emojis, level of formality, etc.
+
+<br/>
+
+<userExamples>
+Paste one or more example responses here that demonstrate the style you want.
+Separate multiple examples with a blank line or ---
+</userExamples>
+"""
+
+
+def _parse_personality(raw: str) -> str:
+    """Strip PERSONALITY.md tags and return a clean system-prompt injection."""
+    text = re.sub(r'\s*<br/>\s*', '\n\n', raw)
+    text = re.sub(r'<userExamples>\s*', '', text)
+    text = re.sub(r'\s*</userExamples>', '', text)
+    return text.strip()
+
+
+def load_personality(workspace: Path) -> tuple[str | None, str]:
+    """Return (parsed_text, source_label) or (None, '') if no PERSONALITY.md found."""
+    local = workspace / "PERSONALITY.md"
+    if local.is_file():
+        path, label = local, f"local ({local})"
+    elif GLOBAL_PERSONALITY_PATH.is_file():
+        path, label = GLOBAL_PERSONALITY_PATH, f"global ({GLOBAL_PERSONALITY_PATH})"
+    else:
+        return None, ""
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+        if not raw:
+            return None, ""
+        return _parse_personality(raw), label
+    except Exception:
+        return None, ""
+
+
 def build_system_prompt(
     workspace: Path,
     memories: list[str] | None = None,
     rc_extras: list[str] | None = None,
     shell_history: list[str] | None = None,
+    personality: str | None = None,
 ) -> str:
     env_line = describe_runtime()
     comspec = os.environ.get("ComSpec", "cmd.exe")
@@ -1329,6 +1388,8 @@ def build_system_prompt(
         "Tiger (1.0–7.0, 2011–2020), Finale (1.0–3.0, 2020–2023), and Max 1.0 (2023–2025) eras. "
         "Max 2.0 is the most advanced, integrated, and capable form of the system."
     )
+    if personality:
+        base += f"\n\n--- Personality & Style (PERSONALITY.md) ---\n{personality}\n---"
     mahanai_md = workspace / "MAHANAI.md"
     if mahanai_md.is_file():
         try:
@@ -1577,6 +1638,10 @@ def _print_help() -> None:
         f"  /resume <id>                Load a previous session\n"
         f"  /export [path]              Export current session to markdown\n"
         f"\n"
+        f"  /personality                Show active personality (local or global PERSONALITY.md)\n"
+        f"  /personality reload         Reload PERSONALITY.md into context\n"
+        f"  /setup-public-personality   Create ~/.mahanai/PERSONALITY.md (global default)\n"
+        f"\n"
         f"  /setup-chat-history         Configure universal chat folder & project folder name\n"
         f"  /recall [name]              Recall a saved chat into current context (fuzzy name match)\n"
         f"  /rename-chat <new-name>     Rename the current chat\n"
@@ -1742,7 +1807,8 @@ def main() -> None:
     # ── New feature state ─────────────────────────────────────────────────────
     _memories: dict[str, dict] = load_memories()
     _mem_texts = [m["content"] for m in _memories.values()]
-    system_prompt = build_system_prompt(workspace, _mem_texts, rc_extras=_rc_extras)
+    _personality, _personality_source = load_personality(workspace)
+    system_prompt = build_system_prompt(workspace, _mem_texts, rc_extras=_rc_extras, personality=_personality)
 
     history: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
 
@@ -1878,6 +1944,9 @@ def main() -> None:
                     print(f"{C.WARN}  .mahanairc: could not read context {_rc_ctx_path!r}: {_rc_ce}{C.RST}")
             else:
                 print(f"{C.WARN}  .mahanairc: context file not found: {_rc_ctx_path!r}{C.RST}")
+
+    if _personality:
+        print(f"{C.OK}🎭 Personality loaded{C.RST} {C.DIM}({_personality_source}){C.RST}\n")
 
     model = os.environ.get("MAHANAI_MODEL", DEFAULT_MODEL)
 
@@ -2723,7 +2792,7 @@ def main() -> None:
                 mid = save_memory(rest.strip())
                 _memories[mid] = {"id": mid, "content": rest.strip()}
                 _mem_texts = [m["content"] for m in _memories.values()]
-                history[0]["content"] = build_system_prompt(workspace, _mem_texts)
+                history[0]["content"] = build_system_prompt(workspace, _mem_texts, personality=_personality)
                 print(f"{C.OK}Memory saved{C.RST} {C.DIM}(id: {mid}){C.RST}\n")
                 continue
             elif cmd == "/memory":
@@ -2764,7 +2833,7 @@ def main() -> None:
                 if remove_memory(_fid):
                     _memories.pop(_fid, None)
                     _mem_texts = [m["content"] for m in _memories.values()]
-                    history[0]["content"] = build_system_prompt(workspace, _mem_texts)
+                    history[0]["content"] = build_system_prompt(workspace, _mem_texts, personality=_personality)
                     print(f"{C.OK}Memory {_fid} removed.{C.RST}\n")
                 else:
                     print(f"{C.ERR}Memory ID '{_fid}' not found.{C.RST}\n")
@@ -3276,8 +3345,7 @@ def main() -> None:
                         print(f"{C.OK}Shell history injected into context.{C.RST} {C.DIM}({len(_sh_cmds)} commands){C.RST}\n")
                 elif _sh_sub == "clear":
                     shell_history_inject = False
-                    # Rebuild system prompt without shell history
-                    system_prompt = build_system_prompt(workspace, _mem_texts, rc_extras=_rc_extras)
+                    system_prompt = build_system_prompt(workspace, _mem_texts, rc_extras=_rc_extras, personality=_personality)
                     history[0]["content"] = system_prompt
                     print(f"{C.OK}Shell history removed from context.{C.RST}\n")
                 else:
@@ -3300,8 +3368,7 @@ def main() -> None:
                     try:
                         _rc_config = parse_rc_file(_rc_reload_path)
                         _rc_extras = _rc_config.system_extras[:]
-                        # Rebuild system prompt with new extras
-                        system_prompt = build_system_prompt(workspace, _mem_texts, rc_extras=_rc_extras)
+                        system_prompt = build_system_prompt(workspace, _mem_texts, rc_extras=_rc_extras, personality=_personality)
                         history[0]["content"] = system_prompt
                         print(f"{C.OK}.mahanairc reloaded.{C.RST}")
                         if _rc_config.warnings:
@@ -3310,6 +3377,45 @@ def main() -> None:
                         print()
                     except Exception as _rc_rel_err:
                         print(f"{C.ERR}.mahanairc reload failed: {_rc_rel_err}{C.RST}\n")
+                continue
+
+            # ── Personality ────────────────────────────────────────────────────
+            elif cmd == "/personality":
+                _psub = rest.strip().lower()
+                if _psub == "reload":
+                    _personality, _personality_source = load_personality(workspace)
+                    system_prompt = build_system_prompt(workspace, _mem_texts, rc_extras=_rc_extras, personality=_personality)
+                    history[0]["content"] = system_prompt
+                    if _personality:
+                        print(f"{C.OK}Personality reloaded.{C.RST} {C.DIM}Source: {_personality_source}{C.RST}\n")
+                    else:
+                        print(f"{C.DIM}No PERSONALITY.md found — personality cleared.{C.RST}\n")
+                else:
+                    if _personality:
+                        print(f"\n{C.OK}Active personality{C.RST} {C.DIM}({_personality_source}){C.RST}\n")
+                        print(f"{C.DIM}{_personality[:400]}{'…' if len(_personality) > 400 else ''}{C.RST}\n")
+                    else:
+                        print(
+                            f"{C.DIM}No personality loaded.{C.RST}\n"
+                            f"  Put a {C.OK}PERSONALITY.md{C.RST} in your working directory for a local personality,\n"
+                            f"  or run {C.OK}/setup-public-personality{C.RST} to create a global one.\n"
+                        )
+                continue
+
+            elif cmd == "/setup-public-personality":
+                GLOBAL_PERSONALITY_DIR.mkdir(parents=True, exist_ok=True)
+                if GLOBAL_PERSONALITY_PATH.is_file():
+                    print(
+                        f"{C.OK}Global PERSONALITY.md already exists:{C.RST}\n"
+                        f"  {C.DIM}{GLOBAL_PERSONALITY_PATH}{C.RST}\n"
+                        f"Edit it to update your personality, then run {C.OK}/personality reload{C.RST}.\n"
+                    )
+                else:
+                    GLOBAL_PERSONALITY_PATH.write_text(_PERSONALITY_TEMPLATE, encoding="utf-8")
+                    print(
+                        f"{C.OK}Created:{C.RST} {C.DIM}{GLOBAL_PERSONALITY_PATH}{C.RST}\n"
+                        f"Edit that file to define your global personality, then run {C.OK}/personality reload{C.RST}.\n"
+                    )
                 continue
 
             # ── Chat history setup ─────────────────────────────────────────────
