@@ -86,6 +86,9 @@ from mahanai.config import (
     load_context_limit,
 )
 from mahanai.mmd_parser import MmdPlugin, parse_mmd_file
+from mahanai.plugin_security import scan_plugin_security, format_security_report
+from mahanai.plugin_signer import PluginVerificationManager
+from mahanai.plugin_audit import get_audit_logger
 from mahanai.rc_parser import parse_rc_file
 from mahanai.system_info import describe_runtime
 from mahanai.tools import TOOLS, batch_approve_and_execute, execute_tool, normalize_tool_arguments_json, set_autonomous_mode, is_autonomous_mode
@@ -109,6 +112,7 @@ from mahanai.chat_history import (
 
 # ── Plugin registry ───────────────────────────────────────────────────────────
 _LOADED_PLUGINS: dict[str, MmdPlugin] = {}  # name → MmdPlugin
+_plugin_verifier = PluginVerificationManager()  # Handles signature verification
 
 
 def _inject_saved_plugins() -> None:
@@ -531,6 +535,7 @@ _ALL_COMMANDS: list[tuple[str, str]] = [
     ("/plugin-load",      "Load a .mmd plugin file"),
     ("/plugin-list",      "Show all loaded plugins"),
     ("/plugin-unload",    "Unload a plugin by name"),
+    ("/plugin-audit",     "Show plugin security audit log"),
     ("/store",            "Plugin store: browse, search, install, upload"),
     ("/help",             "Show all available commands"),
     ("/exit",             "Exit MahanAI"),
@@ -2405,17 +2410,22 @@ def main() -> None:
                             if not _repo:
                                 print(f"{C.ERR}Plugin '{_target}' not found in store.{C.RST}\n")
                             else:
-                                print(f"{C.DIM}Downloading {_repo}...{C.RST}")
-                                from pathlib import Path as _Path
-                                _mmd_path = _store.install_plugin(_repo, token=_stok)
-                                _plugin = parse_mmd_file(_mmd_path)
-                                _LOADED_PLUGINS[_plugin.name] = _plugin
-                                save_plugin(_plugin.name, str(_mmd_path), _plugin.codename, _plugin.reg_store, _plugin.reg_name)
-                                _triggers = ", ".join(_plugin.command_triggers()) or "(none)"
-                                print(
-                                    f"{C.OK}🔌 Installed:{C.RST} {_plugin.name}  "
-                                    f"{C.DIM}v{_plugin.version}  commands: {_triggers}{C.RST}\n"
-                                )
+                                print(f"{C.DIM}Downloading and scanning {_repo}...{C.RST}")
+                                from .store_security import install_plugin_with_security
+                                _success, _msg, _mmd_path = install_plugin_with_security(_repo, token=_stok)
+                                
+                                if _success and _mmd_path:
+                                    _plugin = parse_mmd_file(_mmd_path)
+                                    _LOADED_PLUGINS[_plugin.name] = _plugin
+                                    save_plugin(_plugin.name, str(_mmd_path), _plugin.codename, _plugin.reg_store, _plugin.reg_name)
+                                    get_audit_logger().plugin_loaded(_plugin.name, _plugin.version, "store")
+                                    _triggers = ", ".join(_plugin.command_triggers()) or "(none)"
+                                    print(
+                                        f"{C.OK}🔌 Installed:{C.RST} {_plugin.name}  "
+                                        f"{C.DIM}v{_plugin.version}  commands: {_triggers}{C.RST}\n"
+                                    )
+                                else:
+                                    print(f"{C.ERR}{_msg}{C.RST}\n")
                         except Exception as _se:
                             print(f"{C.ERR}Install failed: {_se}{C.RST}\n")
 
@@ -2506,8 +2516,51 @@ def main() -> None:
                     continue
                 try:
                     _plugin = parse_mmd_file(_pp)
+                    _audit = get_audit_logger()
+                    
+                    # ===== SIGNATURE VERIFICATION =====
+                    _is_signed, _sig_msg, _sig_metadata = _plugin_verifier.verify_plugin_signature(_pp, require_signature=False)
+                    if _sig_metadata:
+                        print(f"{C.OK}✅ Signature verified:{C.RST} {_sig_msg}")
+                        print(f"{C.DIM}  Signed at: {_sig_metadata.get('signed_at', 'unknown')}{C.RST}")
+                        _audit.signature_verified(_plugin.name, _sig_metadata.get('signed_at', 'unknown'))
+                    else:
+                        print(f"{C.WARN}⚠️  {_sig_msg}{C.RST}")
+                    # ===== END SIGNATURE VERIFICATION =====
+                    
+                    # ===== SECURITY SCAN =====
+                    _sec_report = scan_plugin_security(_plugin)
+                    print(format_security_report(_sec_report, verbose=True))
+                    
+                    # Block if there are BLOCKED issues
+                    if _sec_report.blocked_count() > 0:
+                        print(f"{C.ERR}❌ Cannot load plugin: Security issues detected!{C.RST}\n")
+                        _audit.security_blocked(
+                            _plugin.name,
+                            "Failed security scan",
+                            _sec_report.blocked_count(),
+                            {"version": _plugin.version}
+                        )
+                        continue
+                    
+                    # Warn if there are warnings but allow loading with user confirmation
+                    if _sec_report.warning_count() > 0:
+                        _audit.security_warning(
+                            _plugin.name,
+                            "Security warnings detected",
+                            _sec_report.warning_count(),
+                            {"version": _plugin.version, "registry": _plugin.reg_store}
+                        )
+                        _response = input(f"{C.WARN}⚠️  Load anyway? (yes/no): {C.RST}")
+                        if _response.lower() not in ("yes", "y"):
+                            print(f"{C.DIM}Plugin load cancelled.{C.RST}\n")
+                            continue
+                    # ===== END SECURITY SCAN =====
+                    
                     _LOADED_PLUGINS[_plugin.name] = _plugin
                     save_plugin(_plugin.name, str(_pp), _plugin.codename, _plugin.reg_store, _plugin.reg_name)
+                    _audit.plugin_loaded(_plugin.name, _plugin.version, "local")
+                    
                     _triggers = ", ".join(_plugin.command_triggers()) or "(none)"
                     print(
                         f"{C.OK}🔌 Plugin loaded:{C.RST} {_plugin.name}  "
@@ -2537,9 +2590,18 @@ def main() -> None:
                 if _pname in _LOADED_PLUGINS:
                     del _LOADED_PLUGINS[_pname]
                     remove_plugin(_pname)
+                    get_audit_logger().plugin_unloaded(_pname)
                     print(f"{C.OK}Plugin '{_pname}' unloaded.{C.RST}\n")
                 else:
                     print(f"{C.ERR}No plugin named '{_pname}' found.{C.RST}\n")
+                continue
+            if cmd == "/plugin-audit":
+                _limit = 20
+                _arg = rest.strip()
+                if _arg and _arg.isdigit():
+                    _limit = int(_arg)
+                _audit_summary = get_audit_logger().format_log_summary(_limit)
+                print(_audit_summary)
                 continue
             # Plugin hot-reload: check mtimes before dispatching plugin commands
             for _pn_hot, _pd_hot in list(load_plugins().items()):

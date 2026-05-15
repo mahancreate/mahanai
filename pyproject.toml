@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mahanai"
-version = "7.4.0"
+version = "7.5.0"
 description = "MahanAI: terminal AI agent for NVIDIA NIM (OpenAI-compatible), tools, streaming, /api-key, safety prompts."
 readme = "README.md"
 license = "MIT"
@@ -30,6 +30,7 @@ dependencies = [
 
 [project.scripts]
 mahanai = "mahanai.agent:main"
+mahanai-signer = "mahanai.cli_signer:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
